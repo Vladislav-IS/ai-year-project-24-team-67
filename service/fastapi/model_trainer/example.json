@@ -1,0 +1,20 @@
+[
+    {
+        "X": [[0, 0], [1, 1]],
+        "y": [0, 1],
+        "config": {
+            "id": "from_json1",
+            "ml_model_type": "linear",
+            "hyperparameters": {}
+        }
+    },
+    {
+        "X": [[0, 0], [1, 1]],
+        "y": [0, 1],
+        "config": {
+            "id": "from_json2",
+            "ml_model_type": "logreg",
+            "hyperparameters": {}
+        }
+    }
+]
