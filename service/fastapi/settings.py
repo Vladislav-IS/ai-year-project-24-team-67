@@ -1,19 +1,21 @@
+from typing import List
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
-import sqlite3
+
+def get_columns():
+    with open('content/columns.txt') as columns:
+        return columns.read().splitlines() 
 
 
 class Settings(BaseSettings):
-    # директория, в которую сохраняются модели
-    MODEL_DIR: str = Field(default='trash/models')
-     
-    # количество CPU (приходится ставить побольше для асинхронности)
-    # видимо, я не совсем верно реализовал подсчет активных процессов
-    NUM_CPUS: int = Field(default=6) 
-
-    # максимальное количество моделей в инференсе
-    NUM_MODELS: int = Field(default=2)
+    MODEL_DIR: str = 'models'
+    PDF_PATH: str = 'content/eda.pdf'
+    ZIP_TRAIN_PATH: str = 'content/training.zip'
+    ZIP_TEST_PATH: str = 'content/test.zip'
+    GITHUB_LINK: str = 'https://github.com/Vladislav-IS/ai-year-project-24-team-67'
+    NUM_CPUS: int = 6
+    DATAFRAME_COLS: List[str] = get_columns()
 
 
 settings = Settings()
