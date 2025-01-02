@@ -16,6 +16,7 @@ router = APIRouter()
 services = Services()
 settings = Settings()
 
+# создаем папки для моделей и логов
 if not os.path.exists(settings.MODEL_DIR):
     os.mkdir(settings.MODEL_DIR)
 else:
@@ -24,6 +25,7 @@ if not os.path.exists(settings.LOG_DIR):
     os.mkdir(settings.LOG_DIR)
 
 
+# универсальный ответ с сообщением
 class MessageResponse(BaseModel):
     message: str
 
@@ -31,6 +33,7 @@ class MessageResponse(BaseModel):
         json_schema_extra = {"example": {"message": "Some message text"}}
 
 
+# конфигурация модели
 class ModelConfig(BaseModel):
     id: str = Field(min_length=1)
     type: Literal["LogReg", "SVM", "RandomForest", "GradientBoosting"]
@@ -46,13 +49,7 @@ class ModelConfig(BaseModel):
         }
 
 
-class LinkEdaResponse(BaseModel):
-    link: str
-
-    class Config:
-        json_schema_extra = {"example": {"link": "Some link"}}
-
-
+# ответ со списком столбцов датасета и их типами
 class DataColumnsResponse(BaseModel):
     columns: Dict[str, str]
     target: str
@@ -68,6 +65,7 @@ class DataColumnsResponse(BaseModel):
         }
 
 
+# ответ со спском моделей
 class ModelTypesResponse(BaseModel):
     models: Dict[str, List[str]]
 
@@ -76,6 +74,7 @@ class ModelTypesResponse(BaseModel):
             "models": [{"Some type": ["Some param"]}]}}
 
 
+# ответ с информацией о модели (обучена, удалена и т.п.)
 class IdResponse(BaseModel):
     id: str = Field(min_length=1)
     status: Literal["load", "unload", "trained",
@@ -85,6 +84,7 @@ class IdResponse(BaseModel):
         json_schema_extra = {"example": {"id": "Some id", "status": "load"}}
 
 
+# ответ
 class RequestError(BaseModel):
     detail: str
 
@@ -94,6 +94,7 @@ class RequestError(BaseModel):
         }
 
 
+#
 class PredictResponse(BaseModel):
     predictions: List[float]
     index: List[float]
@@ -109,6 +110,7 @@ class PredictResponse(BaseModel):
         }
 
 
+#
 class CompareModelsRequest(BaseModel):
     ids: List[str]
 
@@ -116,6 +118,7 @@ class CompareModelsRequest(BaseModel):
         json_schema_extra = {"example": {"ids": ["Some id"]}}
 
 
+#
 class CompareModelsResponse(BaseModel):
     results: Dict[str, Dict[str, float]]
 
@@ -123,6 +126,7 @@ class CompareModelsResponse(BaseModel):
         json_schema_extra = {"example": {"results": {"Some id": 1.0}}}
 
 
+#
 class ModelsListResponse(BaseModel):
     models: List[ModelConfig]
 
@@ -139,6 +143,9 @@ class ModelsListResponse(BaseModel):
 
 @router.get("/get_eda_pdf", response_class=FileResponse)
 async def get_eda_pdf():
+    '''
+    запрос EDA в виде PDF-файла
+    '''
     headers = {
         "Content-Disposition": f"attachment; \
                filename={settings.PDF_PATH}"
@@ -150,6 +157,9 @@ async def get_eda_pdf():
 
 @router.get("/get_columns", response_model=DataColumnsResponse)
 async def get_columns():
+    '''
+    запрос списка колонок датасета с их типами
+    '''
     return DataColumnsResponse(
         columns=settings.DATASET_COLS,
         target=settings.TARGET_COL,
@@ -159,6 +169,10 @@ async def get_columns():
 
 @router.get("/get_model_types", response_model=ModelTypesResponse)
 async def get_model_types():
+    '''
+    запрос списка типов моделей, которые
+    можно обучить
+    '''
     model_types = {}
     for mtype in settings.MODEL_TYPES:
         model_types[mtype] = services.get_params(mtype)
@@ -173,6 +187,11 @@ async def train_with_file(
     models_str: Annotated[str, 'models list'] = Form(...),
     file: Annotated[UploadFile, 'csv'] = File(...)
 ):
+    '''
+    обучение модели по данным из файла:
+    models_str - список моделей;
+    file - csv-файл с данными
+    '''
     models = []
     unique_ids = []
     for model_str in json.loads(models_str):
@@ -183,13 +202,13 @@ async def train_with_file(
         )
         if services.find_id(model.id):
             raise HTTPException(
-                status_code=500, detail=f"Модель {model.id} уже обучена"
+                status_code=500, detail=f"Model {model.id} is already fitted"
             )
         models.append(model)
         unique_ids.append(model_str['id'])
     if len(unique_ids) > len(set(unique_ids)):
         raise HTTPException(
-            status_code=500, detail="Дублируются некоторые ID моделей"
+            status_code=500, detail="Found duplicated IDs"
         )
     available_cpus = (
         min(settings.NUM_CPUS, os.cpu_count()) - services.ACTIVE_PROCESSES
@@ -197,7 +216,7 @@ async def train_with_file(
     train_proc_num = len(models)
     if train_proc_num > available_cpus:
         raise HTTPException(
-            status_code=500, detail="Уменьшите число обучаемых моделей")
+            status_code=500, detail="Too many models to train")
     responses = []
     df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
     X = df.drop(settings.NON_FEATURE_COLS + [settings.TARGET_COL], axis=1)
@@ -223,9 +242,13 @@ async def train_with_file(
 
 @router.get("/get_current_model", response_model=MessageResponse)
 async def get_status_api():
+    '''
+    получение текущей модели,
+    которая установлена для инференса
+    '''
     if services.CURRENT_MODEL_ID is None:
         raise HTTPException(
-            status_code=500, detail="Текущая модель не утсановлена")
+            status_code=500, detail="Current model ID not found")
     return MessageResponse(message=f"{services.CURRENT_MODEL_ID}")
 
 
@@ -235,10 +258,15 @@ async def get_status_api():
 )
 async def set_model(model_id:
                     Annotated[str, "path-like id"] = Path(min_length=1)):
+    '''
+    установка модели для инференса:
+    model_id - ID модели в виде path-параметра
+    '''
     if not services.find_id(model_id):
-        raise HTTPException(status_code=500, detail="ID не найден")
+        raise HTTPException(status_code=500, detail="Model ID not found")
     if services.CURRENT_MODEL_ID == model_id:
-        raise HTTPException(status_code=500, detail="Данный ID уже установлен")
+        raise HTTPException(
+            status_code=500, detail="Model ID is already fitted")
     services.CURRENT_MODEL_ID = model_id
     return IdResponse(id=model_id, status="load")
 
@@ -248,8 +276,11 @@ async def set_model(model_id:
     responses={200: {"model": IdResponse}, 500: {"model": RequestError}}
 )
 async def unset_model():
+    '''
+    снятие текущей модели с инференса
+    '''
     if services.CURRENT_MODEL_ID is None:
-        raise HTTPException(status_code=500, detail="ID не найден")
+        raise HTTPException(status_code=500, detail="Model ID not found")
     model_id = services.CURRENT_MODEL_ID
     services.CURRENT_MODEL_ID = None
     return IdResponse(id=model_id, status="unload")
@@ -260,8 +291,12 @@ async def unset_model():
     responses={200: {"model": PredictResponse}, 500: {"model": RequestError}},
 )
 async def predict(file: Annotated[UploadFile, 'csv'] = File(...)):
+    '''
+    выполнение предсказаний по файлу с данными:
+    file - csv-файл с данными
+    '''
     if services.CURRENT_MODEL_ID is None:
-        raise HTTPException(status_code=500, detail="ID не найден")
+        raise HTTPException(status_code=500, detail="Model ID not found")
     df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
     preds = services.predict(df, services.CURRENT_MODEL_ID)
     return PredictResponse(
@@ -278,6 +313,11 @@ async def compare_models(
     models_str: Annotated[str, 'models list'] = Form(...),
     file: Annotated[UploadFile, 'csv'] = File(...)
 ):
+    '''
+    сравнение моделей с заданными ID по метрикам:
+    models_str - список ID моделей;
+    file - csv-файл, по которому выполняется сравнение
+    '''
     models = CompareModelsRequest(ids=json.loads(models_str)["ids"])
     df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
     for col in settings.NON_FEATURE_COLS:
@@ -295,8 +335,11 @@ async def compare_models(
                500: {"model": RequestError}},
 )
 async def models_list():
+    '''
+    запрос списка моделей
+    '''
     if len(services.MODELS_TYPES_LIST) == 0:
-        raise HTTPException(status_code=500, detail="Список моделей не найден")
+        raise HTTPException(status_code=500, detail="Models list not found")
     models = []
     for model_id, model_type in services.MODELS_TYPES_LIST.items():
         hyperparams = services.MODELS_LIST[model_id]['classifier'].get_params()
@@ -317,14 +360,21 @@ async def models_list():
 )
 async def remove(model_id: Annotated[str, "path-like id"] =
                  Path(min_length=1)):
+    '''
+    удаление модели:
+    model_id - ID модели в виде path-параметра
+    '''
     if not services.find_id(model_id):
-        raise HTTPException(status_code=500, detail="ID не найден")
+        raise HTTPException(status_code=500, detail="Model ID not found")
     services.remove(model_id)
     return IdResponse(id=model_id, status="removed")
 
 
 @router.delete("/remove_all", response_model=List[IdResponse])
 async def remove_all_api():
+    '''
+    очистка списка моделей
+    '''
     responses = []
     ids = services.remove_all()
     for model_id in ids:

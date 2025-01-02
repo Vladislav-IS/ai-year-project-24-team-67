@@ -9,6 +9,10 @@ settings = Settings()
 
 
 def check_dataset(df, cols_data, mode="train"):
+    '''
+    проверка датасета на соответствие
+    "эталооным" столбцам и их типам
+    '''
     standard_cols = cols_data["columns"].copy()
     df_cols = df.dtypes.to_dict()
     for non_feature_col in cols_data["non_feature"]:
@@ -20,12 +24,18 @@ def check_dataset(df, cols_data, mode="train"):
 
 
 def get():
+    '''
+    корневой GET-запрос
+    '''
     response = requests.get(settings.FASTAPI_URL)
     return response
 
 
 @st.cache_data
 def get_pdf():
+    '''
+    запрос файла PDF
+    '''
     response = requests.get(settings.FASTAPI_URL
                             + settings.ROUTE + "get_eda_pdf")
     return response
@@ -33,6 +43,9 @@ def get_pdf():
 
 @st.cache_data
 def get_columns():
+    '''
+    запрос "эталонных" столбцов и их типов
+    '''
     response = requests.get(settings.FASTAPI_URL
                             + settings.ROUTE + "get_columns")
     return response
@@ -40,6 +53,9 @@ def get_columns():
 
 @st.cache_data
 def get_model_types():
+    '''
+    запрос списка доступных типов моделей
+    '''
     response = requests.get(settings.FASTAPI_URL
                             + settings.ROUTE + "get_model_types")
     return response
@@ -47,6 +63,9 @@ def get_model_types():
 
 @st.cache_resource
 def train_models(request_list, file):
+    '''
+    запрос на обучение моделей
+    '''
     m = MultipartEncoder(
         fields={
             "models_str": json.dumps(request_list),

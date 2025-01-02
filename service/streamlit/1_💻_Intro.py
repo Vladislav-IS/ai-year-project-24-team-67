@@ -2,11 +2,13 @@ import logging
 
 import client_funcs
 import streamlit as st
-from settings import settings
+from settings import Settings
+
+settings = Settings()
 
 
 def main():
-    logging.info("Open page Intro")
+    logging.info("Intro opened")
     st.set_page_config(layout="wide", page_title="Intro", page_icon="💻")
     st.title(
         "Intro. Предсказание динамики физической системы с \

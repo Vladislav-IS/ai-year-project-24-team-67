@@ -23,4 +23,7 @@ app.add_middleware(
 
 @app.get("/", response_model=MessageResponse)
 async def root():
+    '''
+    коренвой GET-запрос
+    '''
     return MessageResponse(message="Ready to work!")

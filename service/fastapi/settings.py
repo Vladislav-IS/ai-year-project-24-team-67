@@ -4,15 +4,32 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # папка для сохранения моделей
     MODEL_DIR: str = "models"
+
+    # папка для сохранения логов
     LOG_DIR: str = "logs"
+
+    # PDF-файл c EDA
     PDF_PATH: str = "content/eda.pdf"
+
+    # максимальное число доступных для обучения процессов
     NUM_CPUS: int = 6
+
+    # название целевой переменной
     TARGET_COL: str = "Label"
+
+    # не используемые столбцы датасета
     NON_FEATURE_COLS: Optional[List[str]] = ["Weight"]
+
+    # сотлбец индексов
     INDEX_COL: str = "EventId"
+
+    # список доступных типов моделей
     MODEL_TYPES: List[str] = ["LogReg", "SVM",
                               "RandomForest", "GradientBoosting"]
+
+    # список столбцов датасета с типами
     DATASET_COLS: Dict[str, str] = {
         "EventId": "int64",
         "DER_mass_MMC": "float64",
@@ -48,5 +65,9 @@ class Settings(BaseSettings):
         "Weight": "float64",
         "Label": "object",
     }
+
+    # список доступных метрик качества
     AVAILABLE_SCORINGS: List[str] = ["accuracy", "f1"]
+
+    # путь до файла конфигурации логов для сервера uvicorn
     LOG_CONFIG_PATH: str = "log_config.json"

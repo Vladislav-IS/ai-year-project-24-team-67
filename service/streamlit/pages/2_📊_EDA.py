@@ -10,22 +10,37 @@ import plotly.graph_objects as go
 import seaborn as sns
 import streamlit as st
 from plotly.subplots import make_subplots
-from settings import settings
+from settings import Settings
+
+settings = Settings()
 
 
 def pdf_clicked():
+    '''
+    переход на страницу с PDF-файлом
+    '''
     st.session_state.eda_type = 1
 
 
 def realtime_clicked():
+    '''
+    переход на страницу с real-time EDA
+    '''
     st.session_state.eda_type = 2
 
 
 def back_clicked():
+    '''
+    возвращение на стартовую страницу
+    '''
     st.session_state.eda_type = 0
+    st.cache_data.clear()
 
 
 def bars_and_donut(df, col, h=500, w=800):
+    '''
+    распределене целевого признака
+    '''
     fig = make_subplots(rows=1, cols=2, specs=[
                         [{"type": "domain"}, {"type": "xy"}]])
     x = df[col].value_counts(sort=False).index.tolist()
@@ -66,6 +81,9 @@ def bars_and_donut(df, col, h=500, w=800):
 
 @st.cache_data
 def hist(df, cols, bins, ncols=3):
+    '''
+    распределение остальных признаков (для трейна и теста)
+    '''
     nrows = math.ceil(len(cols) / ncols)
     fig, ax = plt.subplots(nrows, ncols, figsize=(
         5 * ncols, 4.2 * nrows), sharey=False)
@@ -87,6 +105,9 @@ def hist(df, cols, bins, ncols=3):
 
 @st.cache_data
 def hist_target(df, cols, target, bins, ncols=3):
+    '''
+    распределение признаков в зависимости от целевой переменной
+    '''
     nrows = math.ceil(len(cols) / ncols)
     fig, ax = plt.subplots(nrows, ncols, figsize=(
         5 * ncols, 4.2 * nrows), sharey=False)
@@ -107,6 +128,10 @@ def hist_target(df, cols, target, bins, ncols=3):
 
 
 def donut_custom(df1, df2, col, text1, text2, title_text, h, w):
+    '''
+    распределение целочисленных признаков в зависимости
+    от целевой переменной
+    '''
     fig = make_subplots(
         rows=1,
         cols=2,
@@ -148,6 +173,9 @@ def donut_custom(df1, df2, col, text1, text2, title_text, h, w):
 
 
 def start_page(placeholder):
+    '''
+    стартовая страница
+    '''
     with placeholder.container():
         st.write("Выберите тип отображения разведочного анализа данных.")
         st_cols = st.columns(2)
@@ -161,6 +189,9 @@ def start_page(placeholder):
 
 
 def pdf_page(placeholder):
+    '''
+    страница для скачивания PDF-файла
+    '''
     with placeholder.container():
         st_cols = st.columns(3)
         st_cols[1].button("Назад", on_click=back_clicked,
@@ -176,6 +207,9 @@ def pdf_page(placeholder):
 
 @st.cache_data
 def read_train_test(train_csv, test_csv):
+    '''
+    чтение датасетов из файлов
+    '''
     train_df = pd.read_csv(train_csv)
     test_df = pd.read_csv(test_csv)
     return train_df, test_df
@@ -183,6 +217,10 @@ def read_train_test(train_csv, test_csv):
 
 @st.cache_data
 def get_df_data(train_df, test_df):
+    '''
+    получение датасета с количеством
+    событий, дубликатов и проусков
+    '''
     df_obs = pd.DataFrame(
         index=["Количество событий"],
         columns=["Тренировочный набор", "Тестовый набор"]
@@ -210,6 +248,9 @@ def get_df_data(train_df, test_df):
 
 @st.cache_data
 def get_merged_df(train_df, test_df):
+    '''
+    слияние тренировочного и тестового датасетов
+    '''
     df_train_temp = train_df.copy(deep=True)
     df_train_temp["dataset"] = "train"
     df_test_temp = test_df.copy(deep=True)
@@ -220,6 +261,9 @@ def get_merged_df(train_df, test_df):
 
 
 def draw_plots(train_df, test_df, target_col):
+    '''
+    построение графиков
+    '''
     st.header("Дубликаты и пропущенные значения")
     st.dataframe(get_df_data(train_df, test_df), use_container_width=True)
     st.header("Описательные характеристики данных")
@@ -326,6 +370,9 @@ def draw_plots(train_df, test_df, target_col):
 
 
 def realtime_page(placeholder):
+    '''
+    страница с real-time EDA
+    '''
     response = client_funcs.get_columns()
     df_cols_data = response.json()
     with placeholder.container():
@@ -371,6 +418,7 @@ logging.info("EDA opened")
 st.set_page_config(layout="wide", page_title="EDA", page_icon="📊")
 st.title("EDA. Разведочный анализ данных")
 
+# переменная с текущим типом EDA (PDF или real-time EDA)
 if "eda_type" not in st.session_state:
     st.session_state.eda_type = 0
 

@@ -17,12 +17,23 @@ settings = Settings()
 
 class Services:
     def __init__(self):
+
+        # словарь с парами "ID модели - объект Pipeline"
         self.MODELS_LIST = {}
+
+        # словарь с парами "ID модели - тип модели"
         self.MODELS_TYPES_LIST = {}
-        self.ACTIVE_PROCESSES = 1
+
+        # число активных процессов (не считая основного процесса)
+        self.ACTIVE_PROCESSES = 0
+
+        # ID модели, установленной для инференса
         self.CURRENT_MODEL_ID = None
 
     def read_existing_models(self):
+        '''
+        чтение ранее обученных моделей из папки
+        '''
         for model in Path(settings.MODEL_DIR).glob('*.pkl'):
             model_name = f'{settings.MODEL_DIR}/{model.name}'
             model_id = model.name.replace('.pkl', '')
@@ -34,6 +45,9 @@ class Services:
     def fit(
         self, X: List[List[float]], y: List[float], config: Dict[str, Any]
     ) -> Dict[str, Any]:
+        '''
+        обучение модели
+        '''
         y = y.apply(lambda x: 1 if x == "b" else 0)
         try:
             model_id = config["id"]
@@ -74,15 +88,24 @@ class Services:
             return {"id": model_id, "status": "error"}
 
     def find_id(self, model_id: str) -> bool:
+        '''
+        поиск модели в списке по ID
+        '''
         return self.MODELS_LIST.get(model_id) is not None
 
     def predict(self, X: List[List[float]], model_id: str) -> List[float]:
+        '''
+        выполнение предсказаний
+        '''
         preds = self.MODELS_LIST[model_id].predict(X)
         return preds
 
     def compare_models(
         self, X: List[List[float]], y: List[float], ids: List[str]
     ) -> Dict[str, float]:
+        '''
+        сравнение моделей по метрикам
+        '''
         y = y.apply(lambda x: 1 if x == "b" else 0)
         result = {}
         for scoring in settings.AVAILABLE_SCORINGS:
@@ -97,6 +120,9 @@ class Services:
         return result
 
     def remove(self, model_id: str) -> None:
+        '''
+        удаление модели по ID
+        '''
         del self.MODELS_LIST[model_id]
         del self.MODELS_TYPES_LIST[model_id]
         if self.CURRENT_MODEL_ID == model_id:
@@ -105,6 +131,9 @@ class Services:
         os.remove(f"{settings.MODEL_DIR}/{model_id}")
 
     def remove_all(self) -> List[str]:
+        '''
+        очистка списка моделей
+        '''
         self.CURRENT_MODEL_ID = None
         ids = list(self.MODELS_LIST.keys())
         for model_id in ids:
@@ -115,6 +144,10 @@ class Services:
         return ids
 
     def get_params(self, model_type: str) -> List[str]:
+        '''
+        получение списка доступных параметров
+        модели того или иного типа
+        '''
         if model_type == "LogReg":
             params = LogisticRegression().get_params()
         if model_type == "SVM":

@@ -7,25 +7,42 @@ import streamlit as st
 
 
 def train_clicked():
+    '''
+    переход на страницу обучения моделей
+    '''
     st.session_state.models_task = 1
 
 
 def predict_clicked():
+    '''
+    переход на страницу предсказаний
+    '''
     st.session_state.models_task = 2
 
 
 def list_clicked():
+    '''
+    переход на страницу списка моделей
+    '''
     st.session_state.models_task = 3
 
 
 def back_clicked():
+    '''
+    возвращение на стартову страницу
+    '''
     st.session_state.models_task = 0
     st.session_state.train_task = 0
     st.session_state.list_task = 0
+    st.cache_data.clear()
 
 
 @st.cache_data
 def get_train_data():
+    '''
+    получение данных для обучения моделей:
+    списка типов моделей и списка столбцов
+    '''
     response = client_funcs.get_columns()
     df_cols_data = response.json()
     response = client_funcs.get_model_types()
@@ -34,6 +51,9 @@ def get_train_data():
 
 
 def create_model(index, model_types, types_list):
+    '''
+    создание виджетов для добавления новой модели
+    '''
     st.divider()
     st.write(f'Модель {index + 1}')
     mtype = st.selectbox('Выберите тип модели:',
@@ -61,6 +81,10 @@ def create_model(index, model_types, types_list):
 
 
 def choose_model(index):
+    '''
+    создание виджетов для выбора модели из списка
+    с целью сравнения качества
+    '''
     model_id = st.selectbox('Выберите модель для сравнения',
                             st.session_state.model_ids,
                             key=f"choose_{index}")
@@ -68,6 +92,10 @@ def choose_model(index):
 
 
 def add_clicked():
+    '''
+    добавление новой модели для обучения или
+    сравнения качества
+    '''
     if st.session_state.models_task == 1:
         st.session_state.creating_count += 1
     else:
@@ -75,6 +103,10 @@ def add_clicked():
 
 
 def delete_clicked():
+    '''
+    удаление модели на странице обучения или
+    сравнения качества
+    '''
     if st.session_state.models_task == 1:
         st.session_state.creating_count -= 1
     else:
@@ -82,20 +114,32 @@ def delete_clicked():
 
 
 def start_train_clicked():
+    '''
+    запуск обучения моделей
+    '''
     st.session_state.train_task = 1
 
 
 def start_choose_clicked():
+    '''
+    запуск сравнения качества моделей
+    '''
     st.session_state.choose_task = 1
 
 
 @st.cache_data
-def load_data(train_csv):
-    train_df = pd.read_csv(train_csv)
-    return train_df
+def load_data(csv_file):
+    '''
+    загрузка датасета
+    '''
+    df = pd.read_csv(csv_file)
+    return df
 
 
 def start_page(placeholder):
+    '''
+    стартовая страница
+    '''
     with placeholder.container():
         st.write('Выберите дальнейшее действие.')
         st_cols = st.columns(3)
@@ -111,6 +155,9 @@ def start_page(placeholder):
 
 
 def convert(str_param, ptype, types_list):
+    '''
+    конвертация параметра модели к выбранному типу
+    '''
     try:
         return types_list[ptype](str_param.replace(',', '.'))
     except Exception:
@@ -118,6 +165,9 @@ def convert(str_param, ptype, types_list):
 
 
 def train_res_page(placeholder, types_list):
+    '''
+    страница результатов обучения
+    '''
     with placeholder.container():
         st_cols = st.columns(3)
         st_cols[1].button("Назад", on_click=back_clicked,
@@ -152,6 +202,9 @@ def train_res_page(placeholder, types_list):
 
 
 def train_page(placeholder, model_types, df_cols_data):
+    '''
+    страница обучения моделей
+    '''
     placeholder.empty()
     types_list = {
         'Целое число': int,
@@ -204,73 +257,114 @@ def train_page(placeholder, model_types, df_cols_data):
 
 @st.cache_data
 def to_csv(df):
+    '''
+    чтение датасета из csv-файла
+    '''
     return df.to_csv().encode('utf-8')
 
 
+@st.cache_resource
+def make_predictions(csv):
+    response = client_funcs.predict(csv)
+    if response.status_code == 200:
+        preds = response.json()
+        df = pd.DataFrame({
+            'predictions': preds['predictions']
+        }, index=preds['index'])
+        df.index.name = preds['index_name']
+        return True, df
+    else:
+        return False, response.content
+
+
 def predict_page(placeholder, df_cols_data):
+    '''
+    страница предсказаний
+    '''
     placeholder.empty()
     st_cols = st.columns(3)
     st_cols[1].button("Назад", on_click=back_clicked, use_container_width=True)
     response = client_funcs.get_current_model()
     if response.status_code == 200:
-        predict_csv = st.file_uploader(
-            'Загрузите датасет для предсказаний', type=['csv'])
-        if predict_csv is not None:
-            predict_df = load_data(predict_csv)
-            if not client_funcs.check_dataset(predict_df,
-                                              df_cols_data,
-                                              'test'):
-                st.error('Ошибка данных в датасете для предсказаний!')
+        if st.session_state.predict_task == 0:
+            predict_csv = st.file_uploader(
+                'Загрузите датасет для предсказаний', type=['csv'])
+            if predict_csv is not None:
+                predict_df = load_data(predict_csv)
+                if not client_funcs.check_dataset(predict_df,
+                                                  df_cols_data,
+                                                  'test'):
+                    st.error('Ошибка данных в датасете для предсказаний!')
+                else:
+                    st.session_state.predict_task = 1
+                    st.session_state.predict_csv = predict_csv
+                    st.rerun()
+        elif st.session_state.predict_task == 1:
+            res_status, result = make_predictions(st.session_state.predict_csv)
+            if res_status:
+                st.write('Предсказания модели представлены ниже.')
+                st.dataframe(result, use_container_width=True)
+                csv = to_csv(result)
+                st_cols = st.columns(3)
+                st_cols[1].download_button(
+                    "Сохранить",
+                    data=csv,
+                    file_name='predictons.csv',
+                    mime='text/csv',
+                    use_container_width=True
+                )
             else:
-                response = client_funcs.predict(predict_csv)
-                if response.status_code == 200:
-                    preds = response.json()
-                    df = pd.DataFrame({
-                        'predictions': preds['predictions']
-                    }, index=preds['index'])
-                    df.index.name = preds['index_name']
-                    st.dataframe(df, use_container_width=True)
-                    csv = to_csv(df)
-                    st_cols = st.columns(3)
-                    st_cols[1].download_button(
-                        "Сохранить",
-                        data=csv,
-                        file_name='predictons.csv',
-                        mime='text/csv',
-                        use_container_width=True
-                    )
+                st.error(f'Ошибка, сообщение от сервера: {result}')
     else:
-        st.error('Модель для инференса не установлена')
+        st.error(f'Ошибка, сообщение от сервера: {response.content}')
 
 
 def set_clicked():
+    '''
+    переход на страницу установки модели для инференса
+    '''
     st.session_state.list_task = 1
 
 
 def unset_clicked():
+    '''
+    снятие модели с инференса
+    '''
     response = client_funcs.unset_model()
     if response.status_code != 200:
         st.error('Текущая модель не найдена')
 
 
 def remove_model_clicked():
+    '''
+    переход на страницу удаления модели
+    '''
     st.session_state.list_task = 2
 
 
 def remove_all_clicked():
+    '''
+    очистка списка моделей
+    '''
     response = client_funcs.remove_all()
     if response.status_code != 200:
         st.error(f'Ошибка, сообщение от сервера: {response.content}')
 
 
 def set_ok_clicked():
+    '''
+    подтверждение установки выбранного ID для инференса
+    '''
     response = client_funcs.set_model(st.session_state.mid)
     st.session_state.list_task = 0
     if response.status_code != 200:
-        st.error(f'Ошибка, сообщение от сервера: {response.content}')
+        st.error(f'Ошибка, сообщение от сервера: {response.text}')
 
 
 def remove_ok_clicked():
+    '''
+    подтверждение удаления модели с выбранным ID
+    '''
     response = client_funcs.remove_model(st.session_state.mid)
     st.session_state.list_task = 0
     if response.status_code != 200:
@@ -278,10 +372,16 @@ def remove_ok_clicked():
 
 
 def compare_models_click():
+    '''
+    переход на страницу сравнения качества моделей
+    '''
     st.session_state.list_task = 3
 
 
 def form_list(models, cur_model):
+    '''
+    создание виджетов для отображения списка моделей
+    '''
     st.session_state.model_ids = []
     for model in models:
         st.divider()
@@ -300,7 +400,7 @@ def form_list(models, cur_model):
     st_cols[0].button('Установить текущую модель',
                       on_click=set_clicked,
                       use_container_width=True)
-    st_cols[1].button('Убрать текущую модель',
+    st_cols[1].button('Снять текущую модель с инференса',
                       on_click=unset_clicked,
                       disabled=cur_model == '',
                       use_container_width=True)
@@ -320,6 +420,9 @@ def form_list(models, cur_model):
 
 @st.cache_data
 def draw_hist(results):
+    '''
+    график качества моделей с разбивкой по ID
+    '''
     df = pd.DataFrame()
     for scoring, res in results.items():
         score_df = pd.DataFrame({
@@ -333,9 +436,13 @@ def draw_hist(results):
 
 
 def compare_models_page(placeholder, df_cols_data):
+    '''
+    страница сравнения качества моделей
+    '''
     placeholder.empty()
     st_cols = st.columns(3)
     st_cols[1].button("Назад", on_click=back_clicked, use_container_width=True)
+    st.write('Здесь вы можете измерить качество одной или нескольких моделей.')
     if st.session_state.choose_task == 0:
         predict_csv = st.file_uploader(
             'Загрузите датасет для сравнения моделей', type=['csv'])
@@ -377,6 +484,9 @@ def compare_models_page(placeholder, df_cols_data):
 
 
 def list_page(placeholder, cols):
+    '''
+    страница списка моделей
+    '''
     placeholder.empty()
     response = client_funcs.get_current_model()
     cur_model = ''
@@ -384,7 +494,6 @@ def list_page(placeholder, cols):
         cur_model = response.json()['message']
     response = client_funcs.get_models_list()
     if st.session_state.list_task == 0:
-        st.cache_data.clear()
         with placeholder.container():
             st_cols = st.columns(3)
             st_cols[1].button("Назад", on_click=back_clicked,
@@ -397,6 +506,9 @@ def list_page(placeholder, cols):
                 st.error('Нет обученных моделей')
     elif st.session_state.list_task in [1, 2]:
         placeholder.empty()
+        st_cols = st.columns(3)
+        st_cols[1].button("Назад", on_click=back_clicked,
+                          use_container_width=True)
         with placeholder.container():
             st.session_state.mid = st.selectbox(
                 'Выберите id модели',
@@ -413,30 +525,38 @@ def list_page(placeholder, cols):
 
 
 logging.info('Classic ML opened')
-st.set_page_config(page_title='Classic ML',
+st.set_page_config(layout='wide',
+                   page_title='Classic ML',
                    page_icon='🤖')
 st.title("Classic ML. Обучение и инференс")
 
 model_types, df_cols_data = get_train_data()
 
+# переменная с текущим типом страниц
 if 'models_task' not in st.session_state:
     st.session_state.models_task = 0
 
+# переменная состояния страницы обучения моделей
 if 'train_task' not in st.session_state:
     st.session_state.train_task = 0
 
+# переменная состояния страницы предсказания
 if 'predict_task' not in st.session_state:
     st.session_state.predict_task = 0
 
+# количество моделей, созданных для обучения
 if 'creating_count' not in st.session_state:
     st.session_state.creating_count = 0
 
+# количество моделей, отобранных для сравнения качества
 if 'choosing_count' not in st.session_state:
     st.session_state.choosing_count = 0
 
+# переменная состояния страницы со списком моделей
 if 'list_task' not in st.session_state:
     st.session_state.list_task = 0
 
+# переменная состояния страницы сравнения качества моделей
 if 'choose_task' not in st.session_state:
     st.session_state.choose_task = 0
 
