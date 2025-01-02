@@ -44,7 +44,7 @@
 
 `streamlit run 1_💻_Intro.py`
 
-Важно: переменная FASTAPI_URL в `service\streamlit\settings.py должна быть равна "http://localhost:8000/".
+Важно: переменная `FASTAPI_URL` в `service\streamlit\settings.py` должна быть равна `http://127.0.0.1:8000/`.
 
 #### Развертывание в Docker
 
@@ -52,7 +52,7 @@
 
 `docker-compose -f docker-compose.yml up`
 
-Важно: переменная FASTAPI_URL в `service\streamlit\settings.py` должна быть равна "http://fastapi:8000/".
+Важно: переменная `FASTAPI_URL` в `service\streamlit\settings.py` должна быть равна `http://fastapi:8000/`.
 
 #### Развертывание на VPS
 
