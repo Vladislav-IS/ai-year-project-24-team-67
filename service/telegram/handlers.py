@@ -1,7 +1,5 @@
-from aiogram import Router, types, F
+from aiogram import F, Router, types
 from aiogram.filters.command import Command
-import httpx
-
 
 router = Router()
 
@@ -29,4 +27,4 @@ async def cmd_help(message: types.Message):
 
 @router.message(F.text, Command("get_eda"))
 async def cmd_get_eda(message: types.Message):
-    
+    pass

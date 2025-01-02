@@ -2,13 +2,11 @@ FROM python:3.12
 
 RUN mkdir /streamlit
 
-COPY requirements.txt /streamlit
+COPY . /streamlit
 
 WORKDIR /streamlit
 
-RUN pip install -r requirements.txt
-
-COPY . /streamlit
+RUN pip install -r requirements.txt --no-cache-dir
 
 EXPOSE 8501
 

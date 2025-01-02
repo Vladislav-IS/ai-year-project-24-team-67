@@ -1,109 +1,127 @@
+import os
+import pickle
+from pathlib import Path
+from typing import Any, Dict, List
+
+import func_timeout
+from settings import Settings
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, f1_score
-import pickle
-from settings import settings
-from typing import List, Dict, Any, Tuple
-import threading
-import os
-import func_timeout
+
+settings = Settings()
 
 
 class Services:
     def __init__(self):
-        self.MODELS_LIST = {} 
-        self.MODELS_CONFIG_LIST = {} 
-        self.ACTIVE_PROCESSES = 1 
+        self.MODELS_LIST = {}
+        self.MODELS_TYPES_LIST = {}
+        self.ACTIVE_PROCESSES = 1
         self.CURRENT_MODEL_ID = None
 
+    def read_existing_models(self):
+        for model in Path(settings.MODEL_DIR).glob('*.pkl'):
+            model_name = f'{settings.MODEL_DIR}/{model.name}'
+            model_id = model.name.replace('.pkl', '')
+            self.MODELS_LIST[model_id] =\
+                pickle.load(open(model_name, 'rb'))
+            self.MODELS_TYPES_LIST[model_id] =\
+                open(model_name.replace('.pkl', ''), 'r').read().strip()
 
-    def fit(self, 
-            X: List[List[float]], 
-            y: List[float], 
-            config: Dict[str, Any] = {}) -> Dict[str, Any]:
-        self.ACTIVE_PROCESSES += 1
-        model_id = config['id']
-        mtype = config['type']
-        hyperparams = config['hyperparameters']
-        if mtype == 'log_reg':
-            model = LogisticRegression(**hyperparams)
-        elif mtype == 'svm':
-            model = SVC(**hyperparams)
-        elif mtype == 'random_forest':
-            model = RandomForestClassifier(**hyperparams)
-        elif mtype == 'boosting':
-            model = GradientBoostingClassifier(**hyperparams)
-        pipeline = Pipeline(steps=[('preprocessor', StandardScaler()),
-                                    ('classifier', model)])    
+    def fit(
+        self, X: List[List[float]], y: List[float], config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        y = y.apply(lambda x: 1 if x == "b" else 0)
         try:
-            func_timeout.func_timeout(10, pipeline.fit, args=(X, y))
-            pickle.dump(pipeline, open(f"{settings.MODEL_DIR}/{model_id}.pkl", "wb"))
-            return {
-                "id": model_id, 
-                "model": pipeline, 
-                "status": "trained",
-                "type": mtype, 
-                "hyperparameters": model.get_params()
+            model_id = config["id"]
+            mtype = config["type"]
+            hyperparams = {
+                param: value
+                for param, value in config["hyperparameters"].items()
+                if value != ""
+            }
+            if mtype == "LogReg":
+                model = LogisticRegression(**hyperparams)
+            elif mtype == "SVM":
+                model = SVC(**hyperparams)
+            elif mtype == "RandomForest":
+                model = RandomForestClassifier(**hyperparams)
+            elif mtype == "GradientBoosting":
+                model = GradientBoostingClassifier(**hyperparams)
+            pipeline = Pipeline(
+                steps=[("preprocessor", StandardScaler()),
+                       ("classifier", model)]
+            )
+            try:
+                func_timeout.func_timeout(10, pipeline.fit, args=(X, y))
+                pickle.dump(
+                    pipeline, open(
+                        f"{settings.MODEL_DIR}/{model_id}.pkl", "wb")
+                )
+                open(f"{settings.MODEL_DIR}/{model_id}", "w").write(mtype)
+                return {
+                    "id": model_id,
+                    "model": pipeline,
+                    "status": "trained",
+                    "type": mtype,
                 }
-        except func_timeout.FunctionTimedOut:
-            return {
-                "id": model_id, 
-                "status": "not trained"
-                }
-
+            except func_timeout.FunctionTimedOut:
+                return {"id": model_id, "status": "not trained"}
+        except Exception:
+            return {"id": model_id, "status": "error"}
 
     def find_id(self, model_id: str) -> bool:
         return self.MODELS_LIST.get(model_id) is not None
 
-
     def predict(self, X: List[List[float]], model_id: str) -> List[float]:
         preds = self.MODELS_LIST[model_id].predict(X)
         return preds
-    
 
-    def compare_models(self, 
-                       X: List[List[float]], 
-                       y: List[float], 
-                       scoring: str, 
-                       ids: List[str] = None, mtype: 
-                       str = None) -> Dict[str, float]:
-        if scoring == 'accuracy':
-            score = accuracy_score
-        elif scoring == 'f1':
-            score = f1_score
-        if mtype is not None:
-            result = []
-            for model_id, config in self.MODELS_CONFIG_LIST.items():
-                if config['type'] == mtype:
-                    score_value = score(y, self.MODELS_LIST[model_id].predict(X))
-                    result.append({'id': model_id, 'score_value': score_value})
-        elif ids is not None:
+    def compare_models(
+        self, X: List[List[float]], y: List[float], ids: List[str]
+    ) -> Dict[str, float]:
+        y = y.apply(lambda x: 1 if x == "b" else 0)
+        result = {}
+        for scoring in settings.AVAILABLE_SCORINGS:
+            result[scoring] = {}
+            if scoring == "accuracy":
+                score = accuracy_score
+            elif scoring == "f1":
+                score = f1_score
             for model_id in ids:
                 score_value = score(y, self.MODELS_LIST[model_id].predict(X))
-                result.append({'id': model_id, 'score_value': score_value})
-        return result 
-    
+                result[scoring][model_id] = score_value
+        return result
 
-    def remove(self, model_id) -> None:
+    def remove(self, model_id: str) -> None:
         del self.MODELS_LIST[model_id]
-        del self.MODELS_CONFIG_LIST[model_id]
-        if services.CURRENT_MODEL_ID == model_id:
-            services.CURRENT_MODEL_ID = None
+        del self.MODELS_TYPES_LIST[model_id]
+        if self.CURRENT_MODEL_ID == model_id:
+            self.CURRENT_MODEL_ID = None
         os.remove(f"{settings.MODEL_DIR}/{model_id}.pkl")
-
+        os.remove(f"{settings.MODEL_DIR}/{model_id}")
 
     def remove_all(self) -> List[str]:
         self.CURRENT_MODEL_ID = None
         ids = list(self.MODELS_LIST.keys())
         for model_id in ids:
             del self.MODELS_LIST[model_id]
-            del self.MODELS_CONFIG_LIST[model_id]
+            del self.MODELS_TYPES_LIST[model_id]
             os.remove(f"{settings.MODEL_DIR}/{model_id}.pkl")
+            os.remove(f"{settings.MODEL_DIR}/{model_id}")
         return ids
 
-
-services = Services()
+    def get_params(self, model_type: str) -> List[str]:
+        if model_type == "LogReg":
+            params = LogisticRegression().get_params()
+        if model_type == "SVM":
+            params = SVC().get_params()
+        if model_type == "RandomForest":
+            params = RandomForestClassifier().get_params()
+        if model_type == "GradientBoosting":
+            params = GradientBoostingClassifier().get_params()
+        params.pop('n_jobs', None)
+        return list(params.keys())

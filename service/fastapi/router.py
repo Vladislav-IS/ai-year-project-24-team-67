@@ -1,209 +1,222 @@
-from typing import Dict, List, Any, Optional, Literal, Annotated
-
-from fastapi import APIRouter, Path, HTTPException
-from fastapi.responses import FileResponse
-from fastapi.encoders import jsonable_encoder
-
-from pydantic import BaseModel, Field
-
 import asyncio
 import concurrent.futures as pool
-
+import json
 import os
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
-from settings import settings
-from services import services
-
+import pandas as pd
+from fastapi import APIRouter, File, Form, HTTPException, Path, UploadFile
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+from services import Services
+from settings import Settings
 
 router = APIRouter()
+
+services = Services()
+settings = Settings()
+
+if not os.path.exists(settings.MODEL_DIR):
+    os.mkdir(settings.MODEL_DIR)
+else:
+    services.read_existing_models()
+if not os.path.exists(settings.LOG_DIR):
+    os.mkdir(settings.LOG_DIR)
 
 
 class MessageResponse(BaseModel):
     message: str
+
     class Config:
-        json_schema_extra = {
-            "example": {"message": "Some message text"}
-        }
+        json_schema_extra = {"example": {"message": "Some message text"}}
 
 
 class ModelConfig(BaseModel):
     id: str = Field(min_length=1)
-    type: Literal['log_reg', 'svm', 'random_forest', 'boosting']
+    type: Literal["LogReg", "SVM", "RandomForest", "GradientBoosting"]
     hyperparameters: Optional[Dict[str, Any]]
+
     class Config:
         json_schema_extra = {
             "example": {
                 "id": "Some id",
                 "type": "svm",
-                "hyperparameters": {"some_param": 1.},
-                }
+                "hyperparameters": {"Some param": 1.0},
+            }
         }
 
 
 class LinkEdaResponse(BaseModel):
     link: str
+
     class Config:
-        json_schema_extra = {
-            "example": {"link": "Some link"}
-        }
+        json_schema_extra = {"example": {"link": "Some link"}}
 
 
 class DataColumnsResponse(BaseModel):
-    columns: List[str]
-    class Config:
-        json_schema_extra = {
-            "example": {"columns": ['col1', 'col2']}
-        }
+    columns: Dict[str, str]
+    target: str
+    non_feature: Optional[List[str]]
 
-
-class TrainRequest(BaseModel):
-    X: List[List[float]]
-    y: List[float]
-    models: List[ModelConfig]
     class Config:
         json_schema_extra = {
             "example": {
-                "X": [[1., 0.], [1., 1.]],
-                "y": [1., 0,],
-                "models": [{
-                    "id": "Some id",
-                    "type": "log_reg",
-                    "hyperparameters": {"C": 1.},
-                }]
-                }
-        } 
+                "columns": ["col1", "col2"],
+                "target": "col2",
+                "non_feature": ["col1"],
+            }
+        }
+
+
+class ModelTypesResponse(BaseModel):
+    models: Dict[str, List[str]]
+
+    class Config:
+        json_schema_extra = {"example": {
+            "models": [{"Some type": ["Some param"]}]}}
 
 
 class IdResponse(BaseModel):
     id: str = Field(min_length=1)
-    status: Literal["load", "unload", "trained", "not trained", "removed"]
+    status: Literal["load", "unload", "trained",
+                    "not trained", "removed", "error"]
+
     class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "Some id",
-                "status": "load"
-                }
-        }
+        json_schema_extra = {"example": {"id": "Some id", "status": "load"}}
 
 
 class RequestError(BaseModel):
     detail: str
-    class Config:
-       json_schema_extra = {
-            "example": {"detail": "HTTPException raised"},
-        }
-       
 
-class PredictRequest(BaseModel):
-    X: List[List[float]]
     class Config:
         json_schema_extra = {
-            "example": {"X": [[1., 0.], [1., 1.]]}
+            "example": {"detail": "HTTPException raised"},
         }
 
 
 class PredictResponse(BaseModel):
     predictions: List[float]
-    class Config:
-        json_schema_extra = {
-            "example" : {"predictions" : [1., 0.]}
-        }
+    index: List[float]
+    index_name: str
 
-
-class CompareModelsRequest(BaseModel):
-    type: Optional[Literal['log_reg', 'svm', 'random_forest', 'boosting']]
-    ids: Optional[List[str]]
-    X: List[List[float]]
-    y: List[float]
-    scoring: Literal['accuracy', 'f1']
     class Config:
         json_schema_extra = {
             "example": {
-                "type": "log_reg",
-                "ids": None,
-                "X": [[1., 1.], [0., 1,]],
-                "y": [1., 0.],
-                "scoring": "f1"
-                }
-        }
-
-
-class CompareModelsResponse(BaseModel):
-    id: str
-    score_value: float
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "Some id",
-                "score_value": 1.
-                }
-        }
-
-
-class ModelsListResponse(BaseModel):
-    models: List[ModelConfig]
-    class Config:
-        json_schema_extra = {
-            "example": {
-            "models": [{
-                "id": "Some id",
-                "type": "log_reg",
-                "hyperparameters": {"C": 1.}
-                }]
+                "predictions": [1.0, 0.0],
+                "index": [1.0, 2.0],
+                "index_name": "Some name",
             }
         }
 
 
-@router.get("/get_eda_link", response_model=LinkEdaResponse)
-async def get_eda_link():
-    return LinkEdaResponse(link=settings.GITHUB_LINK)
+class CompareModelsRequest(BaseModel):
+    ids: List[str]
+
+    class Config:
+        json_schema_extra = {"example": {"ids": ["Some id"]}}
+
+
+class CompareModelsResponse(BaseModel):
+    results: Dict[str, Dict[str, float]]
+
+    class Config:
+        json_schema_extra = {"example": {"results": {"Some id": 1.0}}}
+
+
+class ModelsListResponse(BaseModel):
+    models: List[ModelConfig]
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "models": [
+                    {"id": "Some id", "type": "log_reg",
+                        "hyperparameters": {"C": 1.0}}
+                ]
+            }
+        }
 
 
 @router.get("/get_eda_pdf", response_class=FileResponse)
 async def get_eda_pdf():
-    headers = {"Content-Disposition": f"attachment; filename={settings.PDF_PATH}"}  
-    return FileResponse(settings.PDF_PATH, headers=headers, media_type='application/pdf')
+    headers = {
+        "Content-Disposition": f"attachment; \
+               filename={settings.PDF_PATH}"
+    }
+    return FileResponse(
+        settings.PDF_PATH, headers=headers, media_type="application/pdf"
+    )
 
 
 @router.get("/get_columns", response_model=DataColumnsResponse)
 async def get_columns():
-    return DataColumnsResponse(columns=settings.DATAFRAME_COLS)
+    return DataColumnsResponse(
+        columns=settings.DATASET_COLS,
+        target=settings.TARGET_COL,
+        non_feature=settings.NON_FEATURE_COLS,
+    )
 
 
-@router.post("/train", responses={
-    200: {'model': List[IdResponse]},
-    500: {'model': RequestError}
-})
-async def train(request: Annotated[TrainRequest, "one data, many models"]):
-    available_cpus = min(settings.NUM_CPUS, os.cpu_count()) - services.ACTIVE_PROCESSES
-    train_data = jsonable_encoder(request)
-    X = train_data['X']
-    y = train_data['y']
-    models = train_data['models']
+@router.get("/get_model_types", response_model=ModelTypesResponse)
+async def get_model_types():
+    model_types = {}
+    for mtype in settings.MODEL_TYPES:
+        model_types[mtype] = services.get_params(mtype)
+    return ModelTypesResponse(models=model_types)
+
+
+@router.post(
+    "/train_with_file",
+    responses={200: {"model": List[IdResponse]}, 500: {"model": RequestError}},
+)
+async def train_with_file(
+    models_str: Annotated[str, 'models list'] = Form(...),
+    file: Annotated[UploadFile, 'csv'] = File(...)
+):
+    models = []
+    unique_ids = []
+    for model_str in json.loads(models_str):
+        model = ModelConfig(
+            id=model_str["id"],
+            hyperparameters=model_str["hyperparameters"],
+            type=model_str["type"],
+        )
+        if services.find_id(model.id):
+            raise HTTPException(
+                status_code=500, detail=f"Модель {model.id} уже обучена"
+            )
+        models.append(model)
+        unique_ids.append(model_str['id'])
+    if len(unique_ids) > len(set(unique_ids)):
+        raise HTTPException(
+            status_code=500, detail="Дублируются некоторые ID моделей"
+        )
+    available_cpus = (
+        min(settings.NUM_CPUS, os.cpu_count()) - services.ACTIVE_PROCESSES
+    )
     train_proc_num = len(models)
     if train_proc_num > available_cpus:
-        raise HTTPException(status_code=500, detail=f"Too many models to train")
+        raise HTTPException(
+            status_code=500, detail="Уменьшите число обучаемых моделей")
     responses = []
-    for model in models:
-        mid = model['id']
-        if services.find_id(mid):
-            raise HTTPException(status_code=500, detail=f"Model '{mid}' is fitted")
+    df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
+    X = df.drop(settings.NON_FEATURE_COLS + [settings.TARGET_COL], axis=1)
+    y = df[settings.TARGET_COL]
     executor = pool.ProcessPoolExecutor(max_workers=train_proc_num)
     services.ACTIVE_PROCESSES += train_proc_num
     loop = asyncio.get_running_loop()
-    tasks = [loop.run_in_executor(executor, services.fit, X, y, model)
-             for model in models]  
+    tasks = [
+        loop.run_in_executor(executor, services.fit, X, y, dict(model))
+        for model in models
+    ]
     results = await asyncio.gather(*tasks)
     services.ACTIVE_PROCESSES -= train_proc_num
     for models_data in results:
         model_id = models_data["id"]
         status = models_data["status"]
-        if status == 'trained':
+        if status == "trained":
             services.MODELS_LIST[model_id] = models_data["model"]
-            services.MODELS_CONFIG_LIST[model_id] = {
-                "type": models_data["type"], 
-                "hyperparameters": models_data["hyperparameters"]
-                }
+            services.MODELS_TYPES_LIST[model_id] = models_data["type"]
         responses.append(IdResponse(id=model_id, status=status))
     return responses
 
@@ -211,97 +224,103 @@ async def train(request: Annotated[TrainRequest, "one data, many models"]):
 @router.get("/get_current_model", response_model=MessageResponse)
 async def get_status_api():
     if services.CURRENT_MODEL_ID is None:
-        raise HTTPException(status_code=500, detail="ID is None") 
+        raise HTTPException(
+            status_code=500, detail="Текущая модель не утсановлена")
     return MessageResponse(message=f"{services.CURRENT_MODEL_ID}")
- 
 
-@router.post("/set_model/{model_id}", responses={
-    201: {'model': IdResponse},
-    404: {'model': RequestError}
-    })
-async def set_model(model_id: Annotated[str, "path-like id"] = Path(min_length=1)):
+
+@router.post(
+    "/set_model/{model_id}",
+    responses={201: {"model": IdResponse}, 404: {"model": RequestError}},
+)
+async def set_model(model_id:
+                    Annotated[str, "path-like id"] = Path(min_length=1)):
     if not services.find_id(model_id):
-        raise HTTPException(status_code=500, detail="Not found")
+        raise HTTPException(status_code=500, detail="ID не найден")
     if services.CURRENT_MODEL_ID == model_id:
-        raise HTTPException(status_code=500, detail="Already set")
+        raise HTTPException(status_code=500, detail="Данный ID уже установлен")
     services.CURRENT_MODEL_ID = model_id
     return IdResponse(id=model_id, status="load")
 
 
-@router.post("/unset_model", responses = {
-    200: {'model': IdResponse},
-    500: {'model': RequestError}
-})
+@router.post(
+    "/unset_model",
+    responses={200: {"model": IdResponse}, 500: {"model": RequestError}}
+)
 async def unset_model():
     if services.CURRENT_MODEL_ID is None:
-        raise HTTPException(status_code=500, detail="Not found")
+        raise HTTPException(status_code=500, detail="ID не найден")
     model_id = services.CURRENT_MODEL_ID
     services.CURRENT_MODEL_ID = None
     return IdResponse(id=model_id, status="unload")
 
 
-@router.post("/predict", responses = {
-    200: {'model': PredictResponse},
-    500: {'model': RequestError}
-    })
-async def predict(request: Annotated[PredictRequest, "predict with file"]):
+@router.post(
+    "/predict_with_file",
+    responses={200: {"model": PredictResponse}, 500: {"model": RequestError}},
+)
+async def predict(file: Annotated[UploadFile, 'csv'] = File(...)):
     if services.CURRENT_MODEL_ID is None:
-        raise HTTPException(status_code=500, detail=f"Not found")
-    X = jsonable_encoder(request)['X']
-    preds = services.predict(X, services.CURRENT_MODEL_ID)
-    return PredictResponse(predictions=preds)
+        raise HTTPException(status_code=500, detail="ID не найден")
+    df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
+    preds = services.predict(df, services.CURRENT_MODEL_ID)
+    return PredictResponse(
+        predictions=preds, index=df.index.values, index_name=settings.INDEX_COL
+    )
 
 
-@router.post("/compare_models", responses = {
-    200: {'model': List[CompareModelsResponse]},
-    500: {'model': RequestError}
-    })
-async def compare_models(request: Annotated[CompareModelsRequest, "compare models"]):
-    models = jsonable_encoder(request)
-    X = models['X']
-    y = models['y']
-    ids = set(models['ids'])
-    if models.get('type') is not None:
-        models_res = services.compare_models(X, y, models['scoring'], mtype=models['type'])
-        if len(models_res) == 0:
-            raise HTTPException(status_code=500, detail='Not found')
-    else:
-        for model_id in ids:
-            if not services.find_id(model_id):
-                raise HTTPException(status_code=500, detail='Not found')
-        models_res = services.compare_models(X, y, models['scoring'], ids=ids)
-    responses = []
-    for model in models_res:
-        responses.append(CompareModelsResponse(id=model['id'], score_value=model['score_value']))
-    return responses
+@router.post(
+    "/compare_models",
+    responses={200: {"model": CompareModelsResponse},
+               500: {"model": RequestError}},
+)
+async def compare_models(
+    models_str: Annotated[str, 'models list'] = Form(...),
+    file: Annotated[UploadFile, 'csv'] = File(...)
+):
+    models = CompareModelsRequest(ids=json.loads(models_str)["ids"])
+    df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
+    for col in settings.NON_FEATURE_COLS:
+        if col in df.columns:
+            df = df.drop(col, axis=1)
+    X = df.drop(settings.TARGET_COL, axis=1)
+    y = df[settings.TARGET_COL]
+    models_res = services.compare_models(X, y, models.ids)
+    return CompareModelsResponse(results=models_res)
 
 
-@router.get("/models_list", responses = {
-    200: {'model': ModelsListResponse},
-    500: {'model': RequestError}
-    })
+@router.get(
+    "/models_list",
+    responses={200: {"model": ModelsListResponse},
+               500: {"model": RequestError}},
+)
 async def models_list():
-    if len(services.MODELS_CONFIG_LIST) == 0:
-        raise HTTPException(status_code=500, detail='Not found')
+    if len(services.MODELS_TYPES_LIST) == 0:
+        raise HTTPException(status_code=500, detail="Список моделей не найден")
     models = []
-    for model_id, config in services.MODELS_CONFIG_LIST.items():
-        models.append({
-            'id': model_id,
-            'type': config['type'],
-            'hyperparameters': config['hyperparameters']
-        })
+    for model_id, model_type in services.MODELS_TYPES_LIST.items():
+        hyperparams = services.MODELS_LIST[model_id]['classifier'].get_params()
+        hyperparams.pop('n_jobs', None)
+        models.append(
+            {
+                "id": model_id,
+                "type": model_type,
+                "hyperparameters": hyperparams,
+            }
+        )
     return ModelsListResponse(models=models)
 
 
-@router.delete("/remove/{model_id}", responses = {
-    200: {'model': IdResponse},
-    404: {'model': RequestError}
-})
-async def remove(model_id: Annotated[str, "path-like id"] = Path(min_length=1)):
+@router.delete(
+    "/remove/{model_id}",
+    responses={200: {"model": IdResponse}, 404: {"model": RequestError}},
+)
+async def remove(model_id: Annotated[str, "path-like id"] =
+                 Path(min_length=1)):
     if not services.find_id(model_id):
-        raise HTTPException(status_code=500, detail=f"Not found")
+        raise HTTPException(status_code=500, detail="ID не найден")
     services.remove(model_id)
-    return IdResponse(id=model_id, status='removed')
+    return IdResponse(id=model_id, status="removed")
 
 
 @router.delete("/remove_all", response_model=List[IdResponse])
@@ -309,5 +328,5 @@ async def remove_all_api():
     responses = []
     ids = services.remove_all()
     for model_id in ids:
-        responses.append(IdResponse(id=model_id, status='removed'))
+        responses.append(IdResponse(id=model_id, status="removed"))
     return responses
