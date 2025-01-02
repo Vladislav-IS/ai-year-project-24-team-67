@@ -1,0 +1,26 @@
+{
+    "version": 1,
+    "formatters": {
+        "logfile": {
+        "format": "[%(asctime)s.%(msecs)03d] %(levelname)s [%(thread)d] - %(message)s"
+        }
+    },
+    "handlers": {
+        "logfile": {
+            "formatter": "logfile",
+            "level": "TRACE",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": "logs/fastapi.log",
+            "backupCount": 5,
+            "mode": "a",
+            "maxBytes": 500000,
+            "delay": true
+        }
+    },
+    "root": {
+        "level": "TRACE",
+        "handlers": [
+            "logfile"
+        ]
+    }
+}
