@@ -1,14 +1,19 @@
 import json
+from typing import Any, Dict, List
 
+import pandas as pd
 import requests
 import streamlit as st
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 from settings import Settings
+from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 settings = Settings()
 
 
-def check_dataset(df, cols_data, mode="train"):
+def check_dataset(df: pd.DataFrame,
+                  cols_data: Dict[str, Any],
+                  mode: str = "train") -> bool:
     '''
     проверка датасета на соответствие
     "эталооным" столбцам и их типам
@@ -23,7 +28,7 @@ def check_dataset(df, cols_data, mode="train"):
     return df_cols == standard_cols
 
 
-def get():
+def get() -> requests.Response:
     '''
     корневой GET-запрос
     '''
@@ -32,7 +37,7 @@ def get():
 
 
 @st.cache_data
-def get_pdf():
+def get_pdf() -> requests.Response:
     '''
     запрос файла PDF
     '''
@@ -42,7 +47,7 @@ def get_pdf():
 
 
 @st.cache_data
-def get_columns():
+def get_columns() -> requests.Response:
     '''
     запрос "эталонных" столбцов и их типов
     '''
@@ -52,7 +57,7 @@ def get_columns():
 
 
 @st.cache_data
-def get_model_types():
+def get_model_types() -> requests.Response:
     '''
     запрос списка доступных типов моделей
     '''
@@ -62,7 +67,8 @@ def get_model_types():
 
 
 @st.cache_resource
-def train_models(request_list, file):
+def train_models(request_list: List[Dict],
+                 file: UploadedFile) -> requests.Response:
     '''
     запрос на обучение моделей
     '''
@@ -80,14 +86,14 @@ def train_models(request_list, file):
     return response
 
 
-def get_current_model():
+def get_current_model() -> requests.Response:
     response = requests.get(settings.FASTAPI_URL
                             + settings.ROUTE + "get_current_model")
     return response
 
 
 @st.cache_data
-def predict(file):
+def predict(file: UploadedFile) -> requests.Response:
     m = MultipartEncoder(
         fields={
             "file": ("data.csv", file, "text/csv"),
@@ -101,21 +107,21 @@ def predict(file):
     return response
 
 
-def get_models_list():
+def get_models_list() -> requests.Response:
     response = requests.get(settings.FASTAPI_URL
                             + settings.ROUTE + "models_list")
     return response
 
 
 @st.cache_data
-def remove_all():
+def remove_all() -> requests.Response:
     response = requests.delete(
         settings.FASTAPI_URL + settings.ROUTE + "remove_all")
     return response
 
 
 @st.cache_data
-def remove_model(model_id):
+def remove_model(model_id: str) -> requests.Response:
     response = requests.delete(
         settings.FASTAPI_URL + settings.ROUTE + f"remove/{model_id}"
     )
@@ -123,7 +129,7 @@ def remove_model(model_id):
 
 
 @st.cache_data
-def set_model(model_id):
+def set_model(model_id: str) -> requests.Response:
     response = requests.post(
         settings.FASTAPI_URL + settings.ROUTE + f"set_model/{model_id}"
     )
@@ -131,14 +137,15 @@ def set_model(model_id):
 
 
 @st.cache_data
-def unset_model():
+def unset_model() -> requests.Response:
     response = requests.post(settings.FASTAPI_URL
                              + settings.ROUTE + "unset_model")
     return response
 
 
 @st.cache_data
-def compare_models(ids, file):
+def compare_models(ids: Dict[str, List[str]],
+                   file: UploadedFile) -> requests.Response:
     m = MultipartEncoder(
         fields={"models_str": json.dumps(ids),
                 "file": ("data.csv", file, "text/csv")}

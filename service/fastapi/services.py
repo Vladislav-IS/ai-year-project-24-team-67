@@ -30,7 +30,7 @@ class Services:
         # ID модели, установленной для инференса
         self.CURRENT_MODEL_ID = None
 
-    def read_existing_models(self):
+    def read_existing_models(self) -> None:
         '''
         чтение ранее обученных моделей из папки
         '''
@@ -48,7 +48,7 @@ class Services:
         '''
         обучение модели
         '''
-        y = y.apply(lambda x: 1 if x == "b" else 0)
+        y = y.apply(lambda x: 1 if x == settings.SIGNAL else 0)
         try:
             model_id = config["id"]
             mtype = config["type"]
@@ -70,7 +70,8 @@ class Services:
                        ("classifier", model)]
             )
             try:
-                func_timeout.func_timeout(10, pipeline.fit, args=(X, y))
+                func_timeout.func_timeout(
+                    settings.TIME_LIMIT, pipeline.fit, args=(X, y))
                 pickle.dump(
                     pipeline, open(
                         f"{settings.MODEL_DIR}/{model_id}.pkl", "wb")
@@ -102,11 +103,11 @@ class Services:
 
     def compare_models(
         self, X: List[List[float]], y: List[float], ids: List[str]
-    ) -> Dict[str, float]:
+    ) -> Dict[str, Dict[str, float]]:
         '''
         сравнение моделей по метрикам
         '''
-        y = y.apply(lambda x: 1 if x == "b" else 0)
+        y = y.apply(lambda x: 1 if x == settings.SIGNAL else 0)
         result = {}
         for scoring in settings.AVAILABLE_SCORINGS:
             result[scoring] = {}

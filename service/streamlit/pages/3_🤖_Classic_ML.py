@@ -358,7 +358,7 @@ def set_ok_clicked():
     response = client_funcs.set_model(st.session_state.mid)
     st.session_state.list_task = 0
     if response.status_code != 200:
-        st.error(f'Ошибка, сообщение от сервера: {response.text}')
+        st.error(f'Ошибка, сообщение от сервера: {response.content}')
 
 
 def remove_ok_clicked():
@@ -488,12 +488,12 @@ def list_page(placeholder, cols):
     страница списка моделей
     '''
     placeholder.empty()
-    response = client_funcs.get_current_model()
-    cur_model = ''
-    if response.status_code == 200:
-        cur_model = response.json()['message']
-    response = client_funcs.get_models_list()
     if st.session_state.list_task == 0:
+        response = client_funcs.get_current_model()
+        cur_model = ''
+        if response.status_code == 200:
+            cur_model = response.json()['message']
+        response = client_funcs.get_models_list()
         with placeholder.container():
             st_cols = st.columns(3)
             st_cols[1].button("Назад", on_click=back_clicked,

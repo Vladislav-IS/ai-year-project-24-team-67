@@ -65,7 +65,7 @@ class DataColumnsResponse(BaseModel):
         }
 
 
-# ответ со спском моделей
+# ответ со списком типов моделей и гиперпараметров
 class ModelTypesResponse(BaseModel):
     models: Dict[str, List[str]]
 
@@ -84,7 +84,7 @@ class IdResponse(BaseModel):
         json_schema_extra = {"example": {"id": "Some id", "status": "load"}}
 
 
-# ответ
+# ответ в случае ошибки
 class RequestError(BaseModel):
     detail: str
 
@@ -94,7 +94,7 @@ class RequestError(BaseModel):
         }
 
 
-#
+# ответ с предсказаниями
 class PredictResponse(BaseModel):
     predictions: List[float]
     index: List[float]
@@ -110,7 +110,7 @@ class PredictResponse(BaseModel):
         }
 
 
-#
+# запрос на сравнение качества моделей
 class CompareModelsRequest(BaseModel):
     ids: List[str]
 
@@ -118,7 +118,7 @@ class CompareModelsRequest(BaseModel):
         json_schema_extra = {"example": {"ids": ["Some id"]}}
 
 
-#
+# ответ со сравнением качества моделей
 class CompareModelsResponse(BaseModel):
     results: Dict[str, Dict[str, float]]
 
@@ -126,7 +126,7 @@ class CompareModelsResponse(BaseModel):
         json_schema_extra = {"example": {"results": {"Some id": 1.0}}}
 
 
-#
+# ответ со списком обученных моделей
 class ModelsListResponse(BaseModel):
     models: List[ModelConfig]
 
@@ -254,7 +254,7 @@ async def get_status_api():
 
 @router.post(
     "/set_model/{model_id}",
-    responses={201: {"model": IdResponse}, 404: {"model": RequestError}},
+    responses={200: {"model": IdResponse}, 404: {"model": RequestError}},
 )
 async def set_model(model_id:
                     Annotated[str, "path-like id"] = Path(min_length=1)):
@@ -356,7 +356,7 @@ async def models_list():
 
 @router.delete(
     "/remove/{model_id}",
-    responses={200: {"model": IdResponse}, 404: {"model": RequestError}},
+    responses={200: {"model": IdResponse}, 500: {"model": RequestError}},
 )
 async def remove(model_id: Annotated[str, "path-like id"] =
                  Path(min_length=1)):
@@ -370,11 +370,16 @@ async def remove(model_id: Annotated[str, "path-like id"] =
     return IdResponse(id=model_id, status="removed")
 
 
-@router.delete("/remove_all", response_model=List[IdResponse])
+@router.delete("/remove_all", responses={
+    200: {'model': List[IdResponse]},
+    500: {'model': RequestError}
+})
 async def remove_all_api():
     '''
     очистка списка моделей
     '''
+    if len(services.MODELS_TYPES_LIST) == 0:
+        raise HTTPException(status_code=500, detail="Models list not found")
     responses = []
     ids = services.remove_all()
     for model_id in ids:

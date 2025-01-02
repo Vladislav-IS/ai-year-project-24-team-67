@@ -1,4 +1,7 @@
 import logging
+from logging.handlers import RotatingFileHandler
+from os import mkdir
+from os.path import exists
 
 import client_funcs
 import streamlit as st
@@ -47,6 +50,25 @@ def main():
         )
 
 
-main()
-# if __name__ == "__main__":
-#    main()
+if __name__ == "__main__":
+
+    # создание папки для хранения логов
+    if not exists("logs"):
+        mkdir("logs")
+
+    # конфигурация параметров логирования
+    logging.basicConfig(
+        format="[%(asctime)s.%(msecs)03d] %(levelname)s - %(message)s",
+        handlers=[
+            RotatingFileHandler(
+                filename="logs/streamlit.log",
+                mode="a",
+                maxBytes=500000,
+                backupCount=5,
+                delay=True,
+            )
+        ],
+        level=logging.NOTSET,
+    )
+
+    main()

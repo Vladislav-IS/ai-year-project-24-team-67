@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # максимальное число доступных для обучения процессов
     NUM_CPUS: int = 6
 
+    # обозначение сигнального события в целевой переменной
+    SIGNAL: str = 's'
+
     # название целевой переменной
     TARGET_COL: str = "Label"
 
@@ -24,6 +27,9 @@ class Settings(BaseSettings):
 
     # сотлбец индексов
     INDEX_COL: str = "EventId"
+
+    # предел времени обучения моделей в секундах
+    TIME_LIMIT: int = 10
 
     # список доступных типов моделей
     MODEL_TYPES: List[str] = ["LogReg", "SVM",
