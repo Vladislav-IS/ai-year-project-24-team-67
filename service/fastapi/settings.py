@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # обозначение сигнального события в целевой переменной
     SIGNAL: str = 's'
 
+    # обозначение фонового события в целевой переменной
+    BACKGROUND: str = 'b'
+
     # название целевой переменной
     TARGET_COL: str = "Label"
 
@@ -77,3 +80,6 @@ class Settings(BaseSettings):
 
     # путь до файла конфигурации логов для сервера uvicorn
     LOG_CONFIG_PATH: str = "log_config.json"
+
+    # ID модели-бейзлайна
+    BASELINE_MODEL_ID: str = "baseline"

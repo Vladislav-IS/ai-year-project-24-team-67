@@ -96,14 +96,14 @@ class RequestError(BaseModel):
 
 # ответ с предсказаниями
 class PredictResponse(BaseModel):
-    predictions: List[float]
+    predictions: List[str]
     index: List[float]
     index_name: str
 
     class Config:
         json_schema_extra = {
             "example": {
-                "predictions": [1.0, 0.0],
+                "predictions": ["b", "s"],
                 "index": [1.0, 2.0],
                 "index_name": "Some name",
             }
@@ -137,6 +137,20 @@ class ModelsListResponse(BaseModel):
                     {"id": "Some id", "type": "log_reg",
                         "hyperparameters": {"C": 1.0}}
                 ]
+            }
+        }
+
+
+# ответ с ID текущей модели и модели-бейзлайна
+class CurrentAndBaselineResponse(BaseModel):
+    current: str
+    baseline: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "current": "Some id",
+                "baseline": "Some id"
             }
         }
 
@@ -230,26 +244,33 @@ async def train_with_file(
     ]
     results = await asyncio.gather(*tasks)
     services.ACTIVE_PROCESSES -= train_proc_num
+    last_trained_id = None
     for models_data in results:
         model_id = models_data["id"]
         status = models_data["status"]
         if status == "trained":
             services.MODELS_LIST[model_id] = models_data["model"]
             services.MODELS_TYPES_LIST[model_id] = models_data["type"]
+            last_trained_id = model_id
         responses.append(IdResponse(id=model_id, status=status))
+    if last_trained_id is not None:
+        services.CURRENT_MODEL_ID = last_trained_id
+        responses.append(IdResponse(id=last_trained_id, status='load'))
     return responses
 
 
-@router.get("/get_current_model", response_model=MessageResponse)
+@router.get("/get_current_model", response_model=CurrentAndBaselineResponse)
 async def get_status_api():
     '''
     получение текущей модели,
     которая установлена для инференса
     '''
-    if services.CURRENT_MODEL_ID is None:
+    if services.CURRENT_MODEL_ID is None and\
+            settings.BASELINE_MODEL_ID is None:
         raise HTTPException(
-            status_code=500, detail="Current model ID not found")
-    return MessageResponse(message=f"{services.CURRENT_MODEL_ID}")
+            status_code=500, detail="Current and baseline model ID not found")
+    return CurrentAndBaselineResponse(current=services.CURRENT_MODEL_ID,
+                                      baseline=settings.BASELINE_MODEL_ID)
 
 
 @router.post(
@@ -279,10 +300,11 @@ async def unset_model():
     '''
     снятие текущей модели с инференса
     '''
-    if services.CURRENT_MODEL_ID is None:
-        raise HTTPException(status_code=500, detail="Model ID not found")
+    if services.CURRENT_MODEL_ID == settings.BASELINE_MODEL_ID:
+        raise HTTPException(
+            status_code=500, detail="Cannot unset baseline model")
     model_id = services.CURRENT_MODEL_ID
-    services.CURRENT_MODEL_ID = None
+    services.CURRENT_MODEL_ID = settings.BASELINE_MODEL_ID
     return IdResponse(id=model_id, status="unload")
 
 
@@ -295,8 +317,6 @@ async def predict(file: Annotated[UploadFile, 'csv'] = File(...)):
     выполнение предсказаний по файлу с данными:
     file - csv-файл с данными
     '''
-    if services.CURRENT_MODEL_ID is None:
-        raise HTTPException(status_code=500, detail="Model ID not found")
     df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
     preds = services.predict(df, services.CURRENT_MODEL_ID)
     return PredictResponse(
@@ -343,7 +363,8 @@ async def models_list():
     models = []
     for model_id, model_type in services.MODELS_TYPES_LIST.items():
         hyperparams = services.MODELS_LIST[model_id]['classifier'].get_params()
-        hyperparams.pop('n_jobs', None)
+        hyperparams = {param: value for param, value in hyperparams.items()
+                       if param in services.get_params(model_type)}
         models.append(
             {
                 "id": model_id,
@@ -366,6 +387,8 @@ async def remove(model_id: Annotated[str, "path-like id"] =
     '''
     if not services.find_id(model_id):
         raise HTTPException(status_code=500, detail="Model ID not found")
+    if model_id == settings.BASELINE_MODEL_ID:
+        raise HTTPException(status_code=500, detail="Cannot remove baseline")
     services.remove(model_id)
     return IdResponse(id=model_id, status="removed")
 

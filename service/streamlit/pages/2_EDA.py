@@ -200,7 +200,7 @@ def pdf_page(placeholder):
         pdf = base64.b64encode(response.content).decode("utf-8")
         pdf_display = f'<div style="text-align:center">\
             <iframe src="data:application/pdf;base64,\
-            {pdf}" width="800" height="1000" type="application/pdf"></iframe>\
+            {pdf}" width="600" height="750" type="application/pdf"></iframe>\
             </div>'
         st.markdown(pdf_display, unsafe_allow_html=True)
 
@@ -415,7 +415,9 @@ def realtime_page(placeholder):
 
 
 logging.info("EDA opened")
-st.set_page_config(layout="wide", page_title="EDA", page_icon="📊")
+st.set_page_config(  # layout="wide",
+    page_title="EDA",
+    page_icon="📊")
 st.title("EDA. Разведочный анализ данных")
 
 # переменная с текущим типом EDA (PDF или real-time EDA)

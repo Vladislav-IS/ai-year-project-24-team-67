@@ -28,7 +28,7 @@ class Services:
         self.ACTIVE_PROCESSES = 0
 
         # ID модели, установленной для инференса
-        self.CURRENT_MODEL_ID = None
+        self.CURRENT_MODEL_ID = settings.BASELINE_MODEL_ID
 
     def read_existing_models(self) -> None:
         '''
@@ -94,12 +94,13 @@ class Services:
         '''
         return self.MODELS_LIST.get(model_id) is not None
 
-    def predict(self, X: List[List[float]], model_id: str) -> List[float]:
+    def predict(self, X: List[List[float]], model_id: str) -> List[str]:
         '''
         выполнение предсказаний
         '''
         preds = self.MODELS_LIST[model_id].predict(X)
-        return preds
+        return [settings.SIGNAL if pred == 1 else settings.BACKGROUND
+                for pred in preds]
 
     def compare_models(
         self, X: List[List[float]], y: List[float], ids: List[str]
@@ -127,7 +128,7 @@ class Services:
         del self.MODELS_LIST[model_id]
         del self.MODELS_TYPES_LIST[model_id]
         if self.CURRENT_MODEL_ID == model_id:
-            self.CURRENT_MODEL_ID = None
+            self.CURRENT_MODEL_ID = settings.BASELINE_MODEL_ID
         os.remove(f"{settings.MODEL_DIR}/{model_id}.pkl")
         os.remove(f"{settings.MODEL_DIR}/{model_id}")
 
@@ -135,13 +136,14 @@ class Services:
         '''
         очистка списка моделей
         '''
-        self.CURRENT_MODEL_ID = None
+        self.CURRENT_MODEL_ID = Settings.BASELINE_MODEL_ID
         ids = list(self.MODELS_LIST.keys())
         for model_id in ids:
-            del self.MODELS_LIST[model_id]
-            del self.MODELS_TYPES_LIST[model_id]
-            os.remove(f"{settings.MODEL_DIR}/{model_id}.pkl")
-            os.remove(f"{settings.MODEL_DIR}/{model_id}")
+            if model_id != settings.BASELINE_MODEL_ID:
+                del self.MODELS_LIST[model_id]
+                del self.MODELS_TYPES_LIST[model_id]
+                os.remove(f"{settings.MODEL_DIR}/{model_id}.pkl")
+                os.remove(f"{settings.MODEL_DIR}/{model_id}")
         return ids
 
     def get_params(self, model_type: str) -> List[str]:
@@ -150,12 +152,11 @@ class Services:
         модели того или иного типа
         '''
         if model_type == "LogReg":
-            params = LogisticRegression().get_params()
+            return ["C", "max_iter", "fit_intercept", "class_weight"]
         if model_type == "SVM":
-            params = SVC().get_params()
+            return ["C", "kernel", "degree", "class_weight"]
         if model_type == "RandomForest":
-            params = RandomForestClassifier().get_params()
+            return ["n_estimators", "criterion", "max_depth", "class_weight"]
         if model_type == "GradientBoosting":
-            params = GradientBoostingClassifier().get_params()
-        params.pop('n_jobs', None)
-        return list(params.keys())
+            return ["n_estimators", "criterion", "max_depth", "learning_rate"]
+        return

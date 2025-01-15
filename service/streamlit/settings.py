@@ -1,7 +1,13 @@
+'''
+streamlit settings
+'''
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    '''
+    streamlit settings
+    '''
     # URL сервера при локальном запуске Streamlit и FastAPI
     FASTAPI_URL: str = "http://127.0.0.1:8000/"
 
