@@ -415,10 +415,6 @@ def realtime_page(placeholder):
 
 
 logging.info("EDA opened")
-st.set_page_config(  # layout="wide",
-    page_title="EDA",
-    page_icon="📊")
-st.title("EDA. Разведочный анализ данных")
 
 # переменная с текущим типом EDA (PDF или real-time EDA)
 if "eda_type" not in st.session_state:

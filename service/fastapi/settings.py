@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # не используемые столбцы датасета
     NON_FEATURE_COLS: Optional[List[str]] = ["Weight"]
 
+    # столбцы датасета, в которых не должно быть пропусков
+    NOT_NA_COLS: Optional[List[str]] = ['PRI_jet_leading_pt', 
+                                        'DER_deltaeta_jet_jet',
+                                        'DER_mass_MMC']
+
     # сотлбец индексов
     INDEX_COL: str = "EventId"
 
@@ -78,8 +83,23 @@ class Settings(BaseSettings):
     # список доступных метрик качества
     AVAILABLE_SCORINGS: List[str] = ["accuracy", "f1"]
 
+    # список доступных лоссов для обучения архитектур DL-моделей
+    AVAILABLE_ARCHITECTURES: List[str] = ["Baseline", "Manual"]
+
+    # список доступных лоссов для обучения DL-модели
+    AVAILABLE_LOSSES: List[str] = ["BCELoss", "MSELoss"]
+
+    # список доступных оптимизаторов для обучения DL-модели
+    AVAILABLE_OPTIMIZERS: List[str] = ["SGD", "Adam"]
+
+    # список доступных слоев для построения DL-модели
+    AVAILABLE_LAYERS: List[str] = ["Linear", "Dropout", "ReLU", "Sigmoid"]
+
     # путь до файла конфигурации логов для сервера uvicorn
     LOG_CONFIG_PATH: str = "log_config.json"
 
     # ID модели-бейзлайна
     BASELINE_MODEL_ID: str = "baseline"
+
+    # стандартный размер батча для обучения и инференса DL-моделей
+    BATCH_SIZE: int = 32

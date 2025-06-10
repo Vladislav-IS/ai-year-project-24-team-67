@@ -8,25 +8,18 @@ import plotly.express as px
 import streamlit as st
 
 
-def train_clicked():
-    '''
-    переход на страницу обучения моделей
-    '''
-    st.session_state.models_task = 1
-
-
 def predict_clicked():
     '''
     переход на страницу предсказаний
     '''
-    st.session_state.models_task = 2
+    st.session_state.models_task = 1
 
 
 def list_clicked():
     '''
     переход на страницу списка моделей
     '''
-    st.session_state.models_task = 3
+    st.session_state.models_task = 2
 
 
 def back_clicked():
@@ -34,18 +27,9 @@ def back_clicked():
     возвращение на стартовую страницу
     '''
     st.session_state.models_task = 0
-    st.session_state.train_task = 0
     st.session_state.list_task = 0
     st.session_state.choosing_count = 0
-    st.session_state.creating_count = 0
     st.cache_data.clear()
-
-
-def back_train_clicked():
-    '''
-    возвращение на страницу обучения
-    '''
-    st.session_state.train_task = 0
 
 
 @st.cache_data
@@ -56,7 +40,7 @@ def get_train_data():
     '''
     response = client_funcs.get_columns()
     df_cols_data = response.json()
-    response = client_funcs.get_model_types()
+    response = client_funcs.get_classic_ml_info()
     model_types = response.json()['models']
     return model_types, df_cols_data
 
@@ -107,10 +91,7 @@ def add_clicked():
     добавление новой модели для обучения или
     сравнения качества
     '''
-    if st.session_state.models_task == 1:
-        st.session_state.creating_count += 1
-    else:
-        st.session_state.choosing_count += 1
+    st.session_state.choosing_count += 1
 
 
 def delete_clicked():
@@ -118,17 +99,7 @@ def delete_clicked():
     удаление модели на странице обучения или
     сравнения качества
     '''
-    if st.session_state.models_task == 1:
-        st.session_state.creating_count -= 1
-    else:
-        st.session_state.choosing_count -= 1
-
-
-def start_train_clicked():
-    '''
-    запуск обучения моделей
-    '''
-    st.session_state.train_task = 1
+    st.session_state.choosing_count -= 1
 
 
 def start_choose_clicked():
@@ -153,14 +124,11 @@ def start_page(placeholder):
     '''
     with placeholder.container():
         st.write('Выберите дальнейшее действие.')
-        st_cols = st.columns(3)
-        st_cols[0].button('Обучить модель',
-                          on_click=train_clicked,
-                          use_container_width=True)
-        st_cols[1].button('Сделать предсказание',
+        st_cols = st.columns(2)
+        st_cols[0].button('Сделать предсказание',
                           on_click=predict_clicked,
                           use_container_width=True)
-        st_cols[2].button('Список моделей',
+        st_cols[1].button('Список моделей',
                           on_click=list_clicked,
                           use_container_width=True)
 
@@ -173,94 +141,6 @@ def convert(str_param, ptype, types_list):
         return types_list[ptype](str_param.replace(',', '.'))
     except Exception:
         return str_param
-
-
-def train_res_page(placeholder, types_list):
-    '''
-    страница результатов обучения
-    '''
-    # with placeholder.container():
-    # st_cols = st.columns(3)
-    # st_cols[1].button("Назад", on_click=back_clicked,
-    #                  use_container_width=True)
-    requests = []
-    for index in range(st.session_state.creating_count):
-        request = {}
-        request['type'] = st.session_state[f'mtype_{index}']
-        request['id'] = st.session_state[f'model_id_{index}']
-        request['hyperparameters'] = {}
-        for param, value in st.session_state[f'params_{index}'].items():
-            ptype = st.session_state[f'ptypes_{index}'][param]
-            request['hyperparameters'][param] =\
-                convert(value, ptype, types_list)
-        requests.append(request)
-    responses = client_funcs.train_models(
-        requests, st.session_state.train_csv)
-    if responses.status_code == 200:
-        for response in responses.json():
-            model_status = response['status']
-            model_id = response['id']
-            if model_status == 'trained':
-                st.info(f'Модель {model_id} обучена')
-            elif model_status == 'not trained':
-                st.error(f'Обучение модели {model_id} прервано')
-            elif model_status == 'load':
-                st.info(f'Модель {model_id} установлена для инференса')
-            else:
-                st.error(
-                    f'Указаны неверные параметры \
-                        для модели {model_id}')
-    else:
-        st.error(f'Ошибка, сообщение от сервера: {responses.content}')
-    st.session_state.train_task = 0
-    # st.session_state.creating_count = 0
-
-
-def train_page(placeholder, model_types, df_cols_data):
-    '''
-    страница обучения моделей
-    '''
-    placeholder.empty()
-    types_list = {
-        'Целое число': int,
-        'Дробь': float,
-        'Строка': str
-    }
-    with placeholder.container():
-        st_cols = st.columns(3)
-        st_cols[1].button("Назад", on_click=back_clicked,
-                          use_container_width=True)
-        train_csv = st.file_uploader(
-            'Загрузите тренировочный датасет', type=['csv'])
-        if train_csv is not None:
-            train_df = load_data(train_csv)
-            if not client_funcs.check_dataset(train_df, df_cols_data):
-                st.error('Ошибка данных в тренировочном датасете!')
-            else:
-                st.session_state.train_csv = train_csv
-                for i in range(st.session_state.creating_count):
-                    create_model(i, model_types, types_list)
-                disabled = st.session_state.creating_count == 0
-                st_cols = st.columns(3)
-                st_cols[0].button('Добавить модель',
-                                  on_click=add_clicked,
-                                  use_container_width=True)
-                st_cols[1].button('Удалить модель',
-                                  on_click=delete_clicked,
-                                  disabled=disabled,
-                                  use_container_width=True)
-                st_cols[2].button('Начать обучение',
-                                  on_click=start_train_clicked,
-                                  disabled=disabled,
-                                  use_container_width=True)
-        if st.session_state.train_task == 1:
-            # placeholder.empty()
-            for i in range(st.session_state.creating_count):
-                if st.session_state[f'model_id_{i}'] == '':
-                    time_id = re.sub(r"\D", "", str(datetime.datetime.now()))
-                    st.session_state[f'model_id_{i}'] = \
-                        f'{st.session_state[f'mtype_{i}']}_{i + 1}_{time_id}'
-            train_res_page(placeholder, types_list)
 
 
 @st.cache_data
@@ -527,10 +407,6 @@ def list_page(placeholder, cols):
 
 
 logging.info('Classic ML opened')
-st.set_page_config(layout='wide',
-                   page_title='Classic ML',
-                   page_icon='🤖')
-st.title("Classic ML. Обучение и инференс")
 
 model_types, df_cols_data = get_train_data()
 
@@ -538,17 +414,9 @@ model_types, df_cols_data = get_train_data()
 if 'models_task' not in st.session_state:
     st.session_state.models_task = 0
 
-# переменная состояния страницы обучения моделей
-if 'train_task' not in st.session_state:
-    st.session_state.train_task = 0
-
 # переменная состояния страницы предсказания
 if 'predict_task' not in st.session_state:
     st.session_state.predict_task = 0
-
-# количество моделей, созданных для обучения
-if 'creating_count' not in st.session_state:
-    st.session_state.creating_count = 0
 
 # количество моделей, отобранных для сравнения качества
 if 'choosing_count' not in st.session_state:
@@ -568,11 +436,8 @@ if st.session_state.models_task == 0:
     logging.info('Start page opened')
     start_page(placeholder)
 elif st.session_state.models_task == 1:
-    logging.info('Train page opened')
-    train_page(placeholder, model_types, df_cols_data)
-elif st.session_state.models_task == 2:
     logging.info('Predict page opened')
     predict_page(placeholder, df_cols_data)
-elif st.session_state.models_task == 3:
+elif st.session_state.models_task == 2:
     logging.info('Models list page opened')
     list_page(placeholder, df_cols_data)

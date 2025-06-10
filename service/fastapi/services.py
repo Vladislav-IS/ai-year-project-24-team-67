@@ -1,18 +1,39 @@
 import os
-import pickle
-from pathlib import Path
-from typing import Any, Dict, List
-
-import func_timeout
-from settings import Settings
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
+from typing import Any, Dict, List, Iterator
 from sklearn.metrics import accuracy_score, f1_score
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
+import json
+
+from settings import Settings
+
+from classic_learning import ClassicLearningTrainer
+from deep_learning import DeepLearningTrainer
+
 
 settings = Settings()
+
+
+class TrainStatus:
+    def __init__(self, model_id: str):
+        self.train_loss = []
+        self.val_loss = []
+        self.train_metric = []
+        self.val_metric = []
+        self.id = model_id
+        self.status = 'training started'
+
+    def fill_epoch_data(self, train_data: Dict[str, Any]) -> None:
+        self.train_loss.append(train_data['train_loss'])
+        self.val_loss.append(train_data['val_loss'])
+        self.train_metric.append(train_data['train_metric'])
+        self.val_metric.append(train_data['val_metric'])
+
+    def complete_filling_data(self, train_data: Dict[str, Any]) -> None:
+        self.status = train_data['status']
+        if self.status == 'trained':
+            self.model = train_data['model']
+
+    def reset(self, model_id: str):
+        self.__init__(model_id)
 
 
 class Services:
@@ -30,63 +51,59 @@ class Services:
         # ID модели, установленной для инференса
         self.CURRENT_MODEL_ID = settings.BASELINE_MODEL_ID
 
+        # тренер моделей классического ML
+        self.CLASSIC_ML_TRAINER = ClassicLearningTrainer()
+
+        # тренер DL-моделей
+        self.DL_TRAINER = DeepLearningTrainer()
+
+        self.TRAIN_STATUS = TrainStatus('')
+
     def read_existing_models(self) -> None:
         '''
         чтение ранее обученных моделей из папки
         '''
-        for model in Path(settings.MODEL_DIR).glob('*.pkl'):
-            model_name = f'{settings.MODEL_DIR}/{model.name}'
-            model_id = model.name.replace('.pkl', '')
-            self.MODELS_LIST[model_id] =\
-                pickle.load(open(model_name, 'rb'))
-            self.MODELS_TYPES_LIST[model_id] =\
-                open(model_name.replace('.pkl', ''), 'r').read().strip()
+        self.CLASSIC_ML_TRAINER.read_existing_models(settings.MODEL_DIR, 
+                                                     self.MODELS_LIST, 
+                                                     self.MODELS_TYPES_LIST)
+        self.DL_TRAINER.read_existing_models(settings.MODEL_DIR,
+                                             self.MODELS_LIST, 
+                                             self.MODELS_TYPES_LIST)
 
-    def fit(
+    def classic_ml_fit(
         self, X: List[List[float]], y: List[float], config: Dict[str, Any]
     ) -> Dict[str, Any]:
         '''
-        обучение модели
+        обучение классической ML-модели
         '''
-        y = y.apply(lambda x: 1 if x == settings.SIGNAL else 0)
-        try:
-            model_id = config["id"]
-            mtype = config["type"]
-            hyperparams = {
-                param: value
-                for param, value in config["hyperparameters"].items()
-                if value != ""
-            }
-            if mtype == "LogReg":
-                model = LogisticRegression(**hyperparams)
-            elif mtype == "SVM":
-                model = SVC(**hyperparams)
-            elif mtype == "RandomForest":
-                model = RandomForestClassifier(**hyperparams)
-            elif mtype == "GradientBoosting":
-                model = GradientBoostingClassifier(**hyperparams)
-            pipeline = Pipeline(
-                steps=[("preprocessor", StandardScaler()),
-                       ("classifier", model)]
-            )
-            try:
-                func_timeout.func_timeout(
-                    settings.TIME_LIMIT, pipeline.fit, args=(X, y))
-                pickle.dump(
-                    pipeline, open(
-                        f"{settings.MODEL_DIR}/{model_id}.pkl", "wb")
-                )
-                open(f"{settings.MODEL_DIR}/{model_id}", "w").write(mtype)
-                return {
-                    "id": model_id,
-                    "model": pipeline,
-                    "status": "trained",
-                    "type": mtype,
-                }
-            except func_timeout.FunctionTimedOut:
-                return {"id": model_id, "status": "not trained"}
-        except Exception:
-            return {"id": model_id, "status": "error"}
+        return self.CLASSIC_ML_TRAINER.train(config, X, y, settings.MODEL_DIR)
+        
+    def dl_fit(self, 
+               X: List[List[float]], 
+               y: List[float], 
+               config: Dict[str, Any]
+    ) -> Iterator[str]:
+        '''
+        обучение DL-модели
+        '''
+        self.TRAIN_STATUS.reset(config['id'])
+        if config['hyperparameters']['device'] == 'CUDA':
+            self.DL_TRAINER.CUDA_IS_BUSY = True
+        else:
+            self.ACTIVE_PROCESSES += 1
+        train_loop = self.DL_TRAINER.train(config, X, y, settings.MODEL_DIR)
+        for res in train_loop:
+            if res.get('status') is not None:
+                self.TRAIN_STATUS.complete_filling_data(res)
+            else:
+                self.TRAIN_STATUS.fill_epoch_data(res)
+        if self.TRAIN_STATUS.status == 'load':
+            self.MODELS_LIST[self.TRAIN_STATUS.id] = self.TRAIN_STATUS.model
+            self.MODELS_TYPES_LIST[self.TRAIN_STATUS.id] = 'NeuralNetwork'
+        if config['hyperparameters']['device'] == 'CUDA':
+            self.DL_TRAINER.CUDA_IS_BUSY = False
+        else:
+            self.ACTIVE_PROCESSES -= 1
 
     def find_id(self, model_id: str) -> bool:
         '''
@@ -98,7 +115,15 @@ class Services:
         '''
         выполнение предсказаний
         '''
-        preds = self.MODELS_LIST[model_id].predict(X)
+        if self.MODELS_TYPES_LIST[model_id] in settings.MODEL_TYPES:
+            preds = self.MODELS_LIST[model_id].predict(X)
+        else:
+            device = 'cuda' if self.DL_TRAINER.CUDA_IS_AVAILABLE else 'cpu' 
+            preds = self.DL_TRAINER.predict(self.DL_TRAINER.SCALERS_LIST[model_id],
+                                            self.MODELS_LIST[model_id], 
+                                            X, 
+                                            settings.BATCH_SIZE, 
+                                            device)    
         return [settings.SIGNAL if pred == 1 else settings.BACKGROUND
                 for pred in preds]
 
@@ -117,7 +142,17 @@ class Services:
             elif scoring == "f1":
                 score = f1_score
             for model_id in ids:
-                score_value = score(y, self.MODELS_LIST[model_id].predict(X))
+                if self.MODELS_TYPES_LIST[model_id] in settings.MODEL_TYPES:
+                    score_value = score(y, self.MODELS_LIST[model_id].predict(X))
+                else:
+                    device = 'cuda' if self.DL_TRAINER.CUDA_IS_AVAILABLE else 'cpu'
+                    print(self.DL_TRAINER.SCALERS_LIST)
+                    pred = self.DL_TRAINER.predict(self.DL_TRAINER.SCALERS_LIST[model_id],
+                                                   self.MODELS_LIST[model_id], 
+                                                   X, 
+                                                   settings.BATCH_SIZE, 
+                                                   device)
+                    score_value = score(y, pred)
                 result[scoring][model_id] = score_value
         return result
 
@@ -125,25 +160,33 @@ class Services:
         '''
         удаление модели по ID
         '''
-        del self.MODELS_LIST[model_id]
-        del self.MODELS_TYPES_LIST[model_id]
         if self.CURRENT_MODEL_ID == model_id:
             self.CURRENT_MODEL_ID = settings.BASELINE_MODEL_ID
-        os.remove(f"{settings.MODEL_DIR}/{model_id}.pkl")
+        if self.MODELS_TYPES_LIST[model_id] == 'NeuralNetwork':
+            os.remove(f"{settings.MODEL_DIR}/{model_id}.pt")
+            os.remove(f"{settings.MODEL_DIR}/scalers/{model_id}_scaler.pkl")
+        else:
+            os.remove(f"{settings.MODEL_DIR}/{model_id}.pkl")
         os.remove(f"{settings.MODEL_DIR}/{model_id}")
+        del self.MODELS_LIST[model_id]
+        del self.MODELS_TYPES_LIST[model_id]
 
     def remove_all(self) -> List[str]:
         '''
         очистка списка моделей
         '''
-        self.CURRENT_MODEL_ID = Settings.BASELINE_MODEL_ID
+        self.CURRENT_MODEL_ID = settings.BASELINE_MODEL_ID
         ids = list(self.MODELS_LIST.keys())
         for model_id in ids:
             if model_id != settings.BASELINE_MODEL_ID:
+                if self.MODELS_TYPES_LIST[model_id] == 'NeuralNetwork':
+                    os.remove(f"{settings.MODEL_DIR}/{model_id}.pt")
+                    os.remove(f"{settings.MODEL_DIR}/scalers/{model_id}_scaler.pkl")
+                else:
+                    os.remove(f"{settings.MODEL_DIR}/{model_id}.pkl")
+                os.remove(f"{settings.MODEL_DIR}/{model_id}")
                 del self.MODELS_LIST[model_id]
                 del self.MODELS_TYPES_LIST[model_id]
-                os.remove(f"{settings.MODEL_DIR}/{model_id}.pkl")
-                os.remove(f"{settings.MODEL_DIR}/{model_id}")
         return ids
 
     def get_params(self, model_type: str) -> List[str]:
@@ -151,12 +194,6 @@ class Services:
         получение списка доступных параметров
         модели того или иного типа
         '''
-        if model_type == "LogReg":
-            return ["C", "max_iter", "fit_intercept", "class_weight"]
-        if model_type == "SVM":
-            return ["C", "kernel", "degree", "class_weight"]
-        if model_type == "RandomForest":
-            return ["n_estimators", "criterion", "max_depth", "class_weight"]
-        if model_type == "GradientBoosting":
-            return ["n_estimators", "criterion", "max_depth", "learning_rate"]
+        if model_type != "NeuralNetwork":
+            return self.CLASSIC_ML_TRAINER.get_params(model_type)
         return

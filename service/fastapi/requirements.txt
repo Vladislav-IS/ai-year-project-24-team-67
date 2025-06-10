@@ -1,8 +1,10 @@
-fastapi==0.115.6
+fastapi==0.115.12
 func_timeout==4.3.5
-pandas==2.2.3
-pydantic==2.10.4
-pydantic_settings==2.7.1
-scikit_learn==1.6.0
+numpy==2.3.0
+pandas==2.3.0
+pydantic==2.11.5
+pydantic_settings==2.9.1
+scikit_learn==1.7.0
+torch==2.7.1
 uvicorn==0.34.0
 python_multipart==0.0.20

@@ -1,0 +1,19 @@
+[[pages]]
+path = "app_pages/1_Intro.py"
+name = "Годовой проект. Введение"
+icon = ":computer:"
+
+[[pages]]
+path = "app_pages/2_EDA.py"
+name = "EDA"
+icon = ":bar_chart:"
+
+[[pages]]
+path = "app_pages/3_Training.py"
+name = "Обучение моделей"
+icon = ":brain:"
+
+[[pages]]
+path = "app_pages/4_Inference.py"
+name = "Инференс моделей"
+icon = ":medal:"

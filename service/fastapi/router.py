@@ -2,10 +2,12 @@ import asyncio
 import concurrent.futures as pool
 import json
 import os
-from typing import Annotated, Any, Dict, List, Literal, Optional
+from typing import Annotated, Dict, List, Literal, Optional, Any
+import ast
 
+import numpy as np
 import pandas as pd
-from fastapi import APIRouter, File, Form, HTTPException, Path, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Path, UploadFile, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from services import Services
@@ -36,7 +38,7 @@ class MessageResponse(BaseModel):
 # конфигурация модели
 class ModelConfig(BaseModel):
     id: str = Field(min_length=1)
-    type: Literal["LogReg", "SVM", "RandomForest", "GradientBoosting"]
+    type: str
     hyperparameters: Optional[Dict[str, Any]]
 
     class Config:
@@ -65,23 +67,46 @@ class DataColumnsResponse(BaseModel):
         }
 
 
-# ответ со списком типов моделей и гиперпараметров
-class ModelTypesResponse(BaseModel):
-    models: Dict[str, List[str]]
+# ответ со списком типов классических ML-моделей и гиперпараметров
+class ClassicMlInfoResponse(BaseModel):
+    models: Dict[str, Dict[str, str]]
 
     class Config:
-        json_schema_extra = {"example": {
-            "models": [{"Some type": ["Some param"]}]}}
+        json_schema_extra = {
+            "example": {
+            "models": {"Some type": {"Some param": "Some param type"}}
+            }
+        }
 
 
 # ответ с информацией о модели (обучена, удалена и т.п.)
 class IdResponse(BaseModel):
     id: str = Field(min_length=1)
-    status: Literal["load", "unload", "trained",
+    status: Literal["load", "unload", "training started", "trained",
                     "not trained", "removed", "error"]
 
     class Config:
         json_schema_extra = {"example": {"id": "Some id", "status": "load"}}
+
+
+# ответ с расширенной информацией о модели (для глубокого обучения)
+class DlIdResponse(IdResponse):
+    train_loss: List[float]
+    val_loss: List[float]
+    train_metric: List[float]
+    val_metric: List[float]
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "Some id", 
+                "status": "load",
+                "train_loss": [0.1],
+                "train_metric": [0.1],
+                "val_loss": [0.1],
+                "val_metric": [0.1]
+                }
+            }
 
 
 # ответ в случае ошибки
@@ -155,6 +180,27 @@ class CurrentAndBaselineResponse(BaseModel):
         }
 
 
+# ответ с параметрами, необходимыми для обучения нейросетей (устройства, лоссы и т.д.)
+class DlInfoResponse(BaseModel):
+    devices: List[Literal["CUDA", "CPU"]]
+    losses: List[Literal["BCELoss", "MSELoss", "CrossEntropyLoss"]]
+    layers: Dict[str, Dict[str, str]]
+    optimizers: Dict[str, Dict[str, str]]
+    metrics: List[str]
+    architectures: List[str]
+
+    class Config:
+        json_schema_extra = {
+            "example" : {
+                "devices": ["CPU", "CUDA"],
+                "losses": ["Some loss"],
+                "metrics": ["Some metric"],
+                "optimizers": {"Some optimizer": {"Some param": "Some param type"}},
+                "architectures": ["Some architecture"]
+            }
+        }
+
+
 @router.get("/get_eda_pdf", response_class=FileResponse)
 async def get_eda_pdf():
     '''
@@ -181,23 +227,23 @@ async def get_columns():
     )
 
 
-@router.get("/get_model_types", response_model=ModelTypesResponse)
-async def get_model_types():
+@router.get("/get_model_types", response_model=ClassicMlInfoResponse)
+async def get_classic_ml_info():
     '''
-    запрос списка типов моделей, которые
+    запрос списка типов классических ML-моделей, которые
     можно обучить
     '''
     model_types = {}
     for mtype in settings.MODEL_TYPES:
         model_types[mtype] = services.get_params(mtype)
-    return ModelTypesResponse(models=model_types)
+    return ClassicMlInfoResponse(models=model_types)
 
 
 @router.post(
-    "/train_with_file",
+    "/train_classic_ml",
     responses={200: {"model": List[IdResponse]}, 500: {"model": RequestError}},
 )
-async def train_with_file(
+async def train_classic_ml(
     models_str: Annotated[str, 'models list'] = Form(...),
     file: Annotated[UploadFile, 'csv'] = File(...)
 ):
@@ -233,13 +279,15 @@ async def train_with_file(
             status_code=500, detail="Too many models to train")
     responses = []
     df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
-    X = df.drop(settings.NON_FEATURE_COLS + [settings.TARGET_COL], axis=1)
-    y = df[settings.TARGET_COL]
+    df_nan = df.replace(-999, np.nan)
+    df_notna = df_nan.dropna(subset=settings.NOT_NA_COLS)
+    X = df_notna.drop(settings.NON_FEATURE_COLS + [settings.TARGET_COL], axis=1)
+    y = df_notna[settings.TARGET_COL].apply(lambda x: 1 if x == settings.SIGNAL else 0)
     executor = pool.ProcessPoolExecutor(max_workers=train_proc_num)
     services.ACTIVE_PROCESSES += train_proc_num
     loop = asyncio.get_running_loop()
     tasks = [
-        loop.run_in_executor(executor, services.fit, X, y, dict(model))
+        loop.run_in_executor(executor, services.CLASSIC_ML_TRAINER.train, dict(model), X, y, settings.MODEL_DIR)
         for model in models
     ]
     results = await asyncio.gather(*tasks)
@@ -257,6 +305,62 @@ async def train_with_file(
         services.CURRENT_MODEL_ID = last_trained_id
         responses.append(IdResponse(id=last_trained_id, status='load'))
     return responses
+
+
+@router.post(
+    "/train_dl",
+    responses={200: {"model": IdResponse}, 500: {"model": RequestError}},
+)
+async def train_dl(
+    backgroundTasks: BackgroundTasks,
+    model_str: Annotated[str, 'pytorch model data'] = Form(...),
+    file: Annotated[UploadFile, 'csv'] = File(...)
+):
+    '''
+    обучение модели по данным из файла:
+    model_str - параметры DL-модели;
+    file - csv-файл с данными
+    '''
+    model_dict = json.loads(model_str)
+    model = ModelConfig(
+        id=model_dict["id"],
+        type=model_dict["type"],
+        hyperparameters=model_dict["hyperparameters"]
+        )
+    if services.find_id(model.id):
+        raise HTTPException(
+            status_code=500, detail=f"Model {model.id} is already fitted"
+        )
+    available_cpus = (
+        min(settings.NUM_CPUS, os.cpu_count()) - services.ACTIVE_PROCESSES
+    )
+    train_on_gpu = model.hyperparameters['device'] == 'CUDA' and not services.DL_TRAINER.CUDA_IS_BUSY
+    train_on_cpu = model.hyperparameters['device'] == 'CPU' and available_cpus >= 1
+    if not (train_on_cpu or train_on_gpu):
+        raise HTTPException(
+            status_code=500, detail="Too many models to train")
+    df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
+    df_nan = df.replace(-999, np.nan)
+    df_notna = df_nan.dropna(subset=settings.NOT_NA_COLS)
+    X = df_notna.drop(settings.NON_FEATURE_COLS + [settings.TARGET_COL], axis=1)
+    y = df_notna[settings.TARGET_COL].apply(lambda x: 1 if x == settings.SIGNAL else 0)
+    backgroundTasks.add_task(services.dl_fit, X, y, dict(model))
+    return IdResponse(id=model.id, status='training started')
+
+
+@router.get("/get_dl_status", response_model=DlIdResponse)
+async def get_dl_status():
+    '''
+    получение информации о статусе обучения
+    '''
+    return DlIdResponse(
+        id=services.TRAIN_STATUS.id,
+        train_loss=services.TRAIN_STATUS.train_loss,
+        val_loss=services.TRAIN_STATUS.val_loss,
+        train_metric=services.TRAIN_STATUS.train_metric,
+        val_metric=services.TRAIN_STATUS.val_metric,
+        status=services.TRAIN_STATUS.status
+    )
 
 
 @router.get("/get_current_model", response_model=CurrentAndBaselineResponse)
@@ -318,9 +422,11 @@ async def predict(file: Annotated[UploadFile, 'csv'] = File(...)):
     file - csv-файл с данными
     '''
     df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
-    preds = services.predict(df, services.CURRENT_MODEL_ID)
+    df_nan = df.replace(-999, np.nan)
+    df_notna = df_nan.dropna(subset=settings.NOT_NA_COLS)
+    preds = services.predict(df_notna, services.CURRENT_MODEL_ID)
     return PredictResponse(
-        predictions=preds, index=df.index.values, index_name=settings.INDEX_COL
+        predictions=preds, index=df_notna.index.values, index_name=settings.INDEX_COL
     )
 
 
@@ -362,9 +468,12 @@ async def models_list():
         raise HTTPException(status_code=500, detail="Models list not found")
     models = []
     for model_id, model_type in services.MODELS_TYPES_LIST.items():
-        hyperparams = services.MODELS_LIST[model_id]['classifier'].get_params()
-        hyperparams = {param: value for param, value in hyperparams.items()
-                       if param in services.get_params(model_type)}
+        if model_type in settings.MODEL_TYPES:
+            hyperparams = services.MODELS_LIST[model_id]['classifier'].get_params()
+            hyperparams = {param: value for param, value in hyperparams.items()
+                           if param in services.get_params(model_type)}
+        else:
+            hyperparams = {}
         models.append(
             {
                 "id": model_id,
@@ -408,3 +517,25 @@ async def remove_all_api():
     for model_id in ids:
         responses.append(IdResponse(id=model_id, status="removed"))
     return responses
+
+
+@router.get("/get_dl_info", response_model=DlInfoResponse)
+async def dl_info():
+    '''
+    запрос параметров, необходимых для обучения нейросетей
+    '''
+    devices = ['CPU']
+    optimizers = {}
+    layers = {}
+    if services.DL_TRAINER.CUDA_IS_AVAILABLE:
+        devices.append('CUDA')
+    for optimizer_type in settings.AVAILABLE_OPTIMIZERS:
+        optimizers[optimizer_type] = services.DL_TRAINER.get_optimizers_params(optimizer_type)
+    for layer_type in settings.AVAILABLE_LAYERS:
+        layers[layer_type] = services.DL_TRAINER.get_layers_params(layer_type)
+    return DlInfoResponse(devices=devices, 
+                          optimizers=optimizers, 
+                          layers=layers,
+                          losses=settings.AVAILABLE_LOSSES,
+                          metrics=settings.AVAILABLE_SCORINGS,
+                          architectures=settings.AVAILABLE_ARCHITECTURES)

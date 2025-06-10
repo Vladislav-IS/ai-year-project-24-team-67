@@ -57,7 +57,7 @@ def get_columns() -> requests.Response:
 
 
 @st.cache_data
-def get_model_types() -> requests.Response:
+def get_classic_ml_info() -> requests.Response:
     '''
     запрос списка доступных типов моделей
     '''
@@ -67,10 +67,10 @@ def get_model_types() -> requests.Response:
 
 
 @st.cache_resource
-def train_models(request_list: List[Dict],
-                 file: UploadedFile) -> requests.Response:
+def train_sklearn_models(request_list: List[Dict],
+                         file: UploadedFile) -> requests.Response:
     '''
-    запрос на обучение моделей
+    запрос на обучение классических ML-моделей
     '''
     m = MultipartEncoder(
         fields={
@@ -79,10 +79,32 @@ def train_models(request_list: List[Dict],
         }
     )
     response = requests.post(
-        settings.FASTAPI_URL + settings.ROUTE + "train_with_file",
+        settings.FASTAPI_URL + settings.ROUTE + "train_classic_ml",
         data=m,
         headers={"Content-Type": m.content_type},
     )
+    return response
+
+
+def train_dl_model(params: Dict[str, Any],
+                   file: UploadedFile) -> requests.Response:
+    m = MultipartEncoder(
+        fields={
+            "model_str": json.dumps(params),
+            "file": ("data.csv", file, "text/csv"),
+        }
+    )
+    response = requests.post(
+        settings.FASTAPI_URL + settings.ROUTE + "train_dl",
+        data=m,
+        headers={"Content-Type": m.content_type},
+    )
+    return response
+
+
+def get_dl_status() -> requests.Response:
+    response = requests.get(settings.FASTAPI_URL
+                            + settings.ROUTE + "get_dl_status")
     return response
 
 
@@ -154,5 +176,13 @@ def compare_models(ids: Dict[str, List[str]],
         settings.FASTAPI_URL + settings.ROUTE + "compare_models",
         data=m,
         headers={"Content-Type": m.content_type},
+    )
+    return response
+
+
+@st.cache_data
+def get_dl_info() -> requests.Response:
+    response = requests.get(
+        settings.FASTAPI_URL + settings.ROUTE + "get_dl_info"
     )
     return response
