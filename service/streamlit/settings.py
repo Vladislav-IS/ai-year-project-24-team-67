@@ -24,6 +24,6 @@ class Settings(BaseSettings):
     # ссылка на репозиторий проекта
     GITHUB_URL: str =\
         "https://github.com/Vladislav-IS/ai-year-project-24-team-67"
-    
+
     # путь до файла конфигурации страниц
     TOML_FILE: str = "app_pages.toml"

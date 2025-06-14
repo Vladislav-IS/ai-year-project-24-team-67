@@ -1,18 +1,19 @@
-import func_timeout
-import pickle
 import os
+import pickle
 from pathlib import Path
-from typing import List, Dict, Callable, Any, Iterator
+from typing import Any, Callable, Dict, Iterator, List
+
+import func_timeout
 import torch
-from torch import nn, optim, jit
-from torch.utils.data import DataLoader, TensorDataset
+from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import f1_score, accuracy_score
+from torch import jit, nn, optim
+from torch.utils.data import DataLoader, TensorDataset
 
 
 class BaselineModel(nn.Module):
-    def __init__(self, input_dim = 30):
+    def __init__(self, input_dim=30):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, 128)
         self.relu = nn.ReLU()
@@ -20,7 +21,7 @@ class BaselineModel(nn.Module):
         self.fc2 = nn.Linear(128, 128)
         self.output = nn.Linear(128, 1)
         self.sigmoid = nn.Sigmoid()
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.relu(self.fc1(x))
         out = self.dropout(out)
@@ -28,7 +29,7 @@ class BaselineModel(nn.Module):
         out = self.dropout(out)
         out = self.sigmoid(self.output(out))
         return out
-    
+
 
 class ModelConstructor(nn.Module):
     def __init__(self, modules_str_dict: Dict[str, Any]):
@@ -52,7 +53,7 @@ class ModelConstructor(nn.Module):
 
 class DeepLearningTrainer:
     def __init__(self):
-        
+
         # флаг доступности GPU
         self.CUDA_IS_AVAILABLE = torch.cuda.is_available()
 
@@ -69,39 +70,47 @@ class DeepLearningTrainer:
               model_dir: str) -> Iterator[Dict[str, Any]]:
         '''
         пайплайн обучения DL-модели
-        '''   
+        '''
         try:
             hyperparams = config["hyperparameters"]
             device = hyperparams["device"].lower()
             model_id = config["id"]
             batch_size = hyperparams["batch_size"]
             model_params = hyperparams["model_params"]
-            X_train, X_val, y_train, y_val = train_test_split(X, 
-                                                              y, 
-                                                              shuffle=True, 
+            X_train, X_val, y_train, y_val = train_test_split(X,
+                                                              y,
+                                                              shuffle=True,
                                                               test_size=hyperparams["test_size"])
             scaler = StandardScaler()
             X_train = scaler.fit_transform(X_train)
             X_val = scaler.transform(X_val)
-            y_train_tensor = torch.tensor(y_train.to_numpy(), dtype=torch.float32)
+            y_train_tensor = torch.tensor(
+                y_train.to_numpy(), dtype=torch.float32)
             y_val_tensor = torch.tensor(y_val.to_numpy(), dtype=torch.float32)
-            train_set = TensorDataset(torch.FloatTensor(X_train), y_train_tensor)
+            train_set = TensorDataset(
+                torch.FloatTensor(X_train), y_train_tensor)
             val_set = TensorDataset(torch.FloatTensor(X_val), y_val_tensor)
-            train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-            val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
-       
+            train_loader = DataLoader(
+                train_set, batch_size=batch_size, shuffle=True)
+            val_loader = DataLoader(
+                val_set, batch_size=batch_size, shuffle=True)
+
             if model_params == 'Baseline':
                 model = BaselineModel().to(device)
             else:
                 model = ModelConstructor(model_params).to(device)
-            
+
             criterion = eval(f'nn.{hyperparams["loss_params"]}()')
-            
+
             if hyperparams["optimizer_params"]["optimizer_type"] == 'Adam':
-                beta_1 = hyperparams["optimizer_params"]["beta_1"]
-                del hyperparams["optimizer_params"]["beta_1"]
-                beta_2 = hyperparams["optimizer_params"]["beta_2"]
-                del hyperparams["optimizer_params"]["beta_2"]
+                beta_1 = hyperparams["optimizer_params"].get("beta_1", 0.9)
+                hyperparams["optimizer_params"] = { 
+                    k: v for k, v in hyperparams["optimizer_params"].items() if k != "beta_1"
+                    }
+                beta_2 = hyperparams["optimizer_params"].get("beta_2", 0.999)
+                hyperparams["optimizer_params"] = { 
+                    k: v for k, v in hyperparams["optimizer_params"].items() if k != "beta_2"
+                    }
                 hyperparams["optimizer_params"]['betas'] = (beta_1, beta_2)
 
             optimizer_str = f'optim.{hyperparams["optimizer_params"]["optimizer_type"]}(model.parameters(),'
@@ -121,7 +130,8 @@ class DeepLearningTrainer:
                     loss_and_metric = func_timeout.func_timeout(
                         hyperparams["time_limit"],
                         self.train_epoch,
-                        args=(model, optimizer, criterion, metric, train_loader, val_loader, device)
+                        args=(model, optimizer, criterion, metric,
+                              train_loader, val_loader, device)
                     )
                     loss_and_metric['id'] = model_id
                     yield loss_and_metric
@@ -137,17 +147,16 @@ class DeepLearningTrainer:
             open(f"{model_dir}/{model_id}", "w").write("NeuralNetwork")
             if not os.path.isdir(f"{model_dir}/scalers"):
                 os.mkdir(f"{model_dir}/scalers")
-            pickle.dump(scaler, open(f"{model_dir}/scalers/{model_id}_scaler.pkl", "wb"))
+            pickle.dump(scaler, open(
+                f"{model_dir}/scalers/{model_id}_scaler.pkl", "wb"))
             yield {"id": model_id, "model": model, "status": "trained"}
             self.CURRENT_MODEL_ID = model_id
             yield {"id": model_id, "status": "load"}
         except Exception as e:
-            print(str(e))
             yield {"id": model_id, "status": "error"}
             if device == 'cuda':
                 torch.cuda.empty_cache()
             return
-
 
     def train_epoch(self,
                     model: nn.Module,
@@ -176,7 +185,7 @@ class DeepLearningTrainer:
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-        
+
         model.eval()
         with torch.no_grad():
             for X_batch, y_batch in val_loader:
@@ -189,18 +198,20 @@ class DeepLearningTrainer:
                 else:
                     pred = output > 0.5
                 val_metric += metric(y_batch, pred)
-        
-        train_loss, val_loss = train_loss / len(train_loader), val_loss / len(val_loader)
-        train_metric, val_metric = train_metric / len(train_loader), val_metric / len(val_loader)
-        return {'train_loss' : train_loss, 
-                'val_loss' : val_loss, 
-                'train_metric' : train_metric, 
-                'val_metric' : val_metric}
 
-    def predict(self, 
+        train_loss, val_loss = train_loss / \
+            len(train_loader), val_loss / len(val_loader)
+        train_metric, val_metric = train_metric / \
+            len(train_loader), val_metric / len(val_loader)
+        return {'train_loss': train_loss,
+                'val_loss': val_loss,
+                'train_metric': train_metric,
+                'val_metric': val_metric}
+
+    def predict(self,
                 scaler: StandardScaler,
-                model: nn.Module, 
-                input_data: List[List[float]], 
+                model: nn.Module,
+                input_data: List[List[float]],
                 batch_size: int,
                 device: str):
         '''
@@ -208,7 +219,8 @@ class DeepLearningTrainer:
         '''
         X_test = scaler.transform(input_data)
         test_set = TensorDataset(torch.FloatTensor(X_test))
-        test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
+        test_loader = DataLoader(
+            test_set, batch_size=batch_size, shuffle=False)
         result = torch.Tensor([])
         model.to(device)
         model.eval()
@@ -222,7 +234,7 @@ class DeepLearningTrainer:
                 result = torch.cat([result, output.detach().cpu()], dim=0)
         return result.tolist()
 
-    def read_existing_models(self,  
+    def read_existing_models(self,
                              model_dir: str,
                              models_list: Dict[str, Any],
                              models_types_list: Dict[str, str]) -> None:
@@ -232,10 +244,12 @@ class DeepLearningTrainer:
         for model in Path(model_dir).glob('*.pt'):
             model_id = model.name.replace('.pt', '')
             device = 'cuda' if self.CUDA_IS_AVAILABLE else 'cpu'
-            models_list[model_id] = jit.load(f'{model_dir}/{model_id}.pt', map_location=device)
+            models_list[model_id] = jit.load(
+                f'{model_dir}/{model_id}.pt', map_location=device)
             models_list[model_id].eval()
             models_types_list[model_id] = 'NeuralNetwork'
-            self.SCALERS_LIST[model_id] = pickle.load(open(f'{model_dir}/scalers/{model_id}_scaler.pkl', 'rb'))
+            self.SCALERS_LIST[model_id] = pickle.load(
+                open(f'{model_dir}/scalers/{model_id}_scaler.pkl', 'rb'))
 
     def get_optimizers_params(self, optimizer_type: str) -> Dict[str, str]:
         '''
@@ -243,25 +257,23 @@ class DeepLearningTrainer:
         оптимайзера того или иного типа
         '''
         if optimizer_type == "SGD":
-            return {"lr": "float", 
-                    "momentum": "float", 
-                    "dampening": "float", 
-                    "nesterov": "bool", 
+            return {"lr": "float",
+                    "momentum": "float",
                     "weight_decay": "float"}
         if optimizer_type == "Adam":
-            return {"lr": "float", 
-                    "beta_1": "float", 
+            return {"lr": "float",
+                    "beta_1": "float",
                     "beta_2": "float",
                     "weight_decay": "float"}
         return {}
-    
+
     def get_layers_params(self, layer_type: str) -> Dict[str, str]:
         '''
         получение списка доступных параметров
         слоев нейросети того или иного типа
         '''
         if layer_type == "Linear":
-            return {"in_features": "int", 
+            return {"in_features": "int",
                     "out_features": "int"}
         if layer_type == "Dropout":
             return {"p": "float"}

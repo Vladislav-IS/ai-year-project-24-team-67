@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     NON_FEATURE_COLS: Optional[List[str]] = ["Weight"]
 
     # столбцы датасета, в которых не должно быть пропусков
-    NOT_NA_COLS: Optional[List[str]] = ['PRI_jet_leading_pt', 
+    NOT_NA_COLS: Optional[List[str]] = ['PRI_jet_leading_pt',
                                         'DER_deltaeta_jet_jet',
                                         'DER_mass_MMC']
 
@@ -40,8 +40,8 @@ class Settings(BaseSettings):
     TIME_LIMIT: int = 10
 
     # список доступных типов моделей
-    MODEL_TYPES: List[str] = ["LogReg", "SVM",
-                              "RandomForest", "GradientBoosting"]
+    CLASSIC_MODEL_TYPES: List[str] = ["LogReg", "SVM",
+                                      "RandomForest", "GradientBoosting"]
 
     # список столбцов датасета с типами
     DATASET_COLS: Dict[str, str] = {

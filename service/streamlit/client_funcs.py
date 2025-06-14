@@ -3,9 +3,10 @@ from typing import Any, Dict, List
 
 import pandas as pd
 import requests
-import streamlit as st
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 from settings import Settings
+
+import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 settings = Settings()

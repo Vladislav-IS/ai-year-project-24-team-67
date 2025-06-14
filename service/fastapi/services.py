@@ -1,13 +1,11 @@
-import os
-from typing import Any, Dict, List, Iterator
-from sklearn.metrics import accuracy_score, f1_score
 import json
-
-from settings import Settings
+import os
+from typing import Any, Dict, Iterator, List
 
 from classic_learning import ClassicLearningTrainer
 from deep_learning import DeepLearningTrainer
-
+from settings import Settings
+from sklearn.metrics import accuracy_score, f1_score
 
 settings = Settings()
 
@@ -63,11 +61,11 @@ class Services:
         '''
         чтение ранее обученных моделей из папки
         '''
-        self.CLASSIC_ML_TRAINER.read_existing_models(settings.MODEL_DIR, 
-                                                     self.MODELS_LIST, 
+        self.CLASSIC_ML_TRAINER.read_existing_models(settings.MODEL_DIR,
+                                                     self.MODELS_LIST,
                                                      self.MODELS_TYPES_LIST)
         self.DL_TRAINER.read_existing_models(settings.MODEL_DIR,
-                                             self.MODELS_LIST, 
+                                             self.MODELS_LIST,
                                              self.MODELS_TYPES_LIST)
 
     def classic_ml_fit(
@@ -77,12 +75,12 @@ class Services:
         обучение классической ML-модели
         '''
         return self.CLASSIC_ML_TRAINER.train(config, X, y, settings.MODEL_DIR)
-        
-    def dl_fit(self, 
-               X: List[List[float]], 
-               y: List[float], 
+
+    def dl_fit(self,
+               X: List[List[float]],
+               y: List[float],
                config: Dict[str, Any]
-    ) -> Iterator[str]:
+               ) -> Iterator[str]:
         '''
         обучение DL-модели
         '''
@@ -115,15 +113,15 @@ class Services:
         '''
         выполнение предсказаний
         '''
-        if self.MODELS_TYPES_LIST[model_id] in settings.MODEL_TYPES:
+        if self.MODELS_TYPES_LIST[model_id] in settings.CLASSIC_MODEL_TYPES:
             preds = self.MODELS_LIST[model_id].predict(X)
         else:
-            device = 'cuda' if self.DL_TRAINER.CUDA_IS_AVAILABLE else 'cpu' 
+            device = 'cuda' if self.DL_TRAINER.CUDA_IS_AVAILABLE else 'cpu'
             preds = self.DL_TRAINER.predict(self.DL_TRAINER.SCALERS_LIST[model_id],
-                                            self.MODELS_LIST[model_id], 
-                                            X, 
-                                            settings.BATCH_SIZE, 
-                                            device)    
+                                            self.MODELS_LIST[model_id],
+                                            X,
+                                            settings.BATCH_SIZE,
+                                            device)
         return [settings.SIGNAL if pred == 1 else settings.BACKGROUND
                 for pred in preds]
 
@@ -142,15 +140,15 @@ class Services:
             elif scoring == "f1":
                 score = f1_score
             for model_id in ids:
-                if self.MODELS_TYPES_LIST[model_id] in settings.MODEL_TYPES:
-                    score_value = score(y, self.MODELS_LIST[model_id].predict(X))
+                if self.MODELS_TYPES_LIST[model_id] in settings.CLASSIC_MODEL_TYPES:
+                    score_value = score(
+                        y, self.MODELS_LIST[model_id].predict(X))
                 else:
                     device = 'cuda' if self.DL_TRAINER.CUDA_IS_AVAILABLE else 'cpu'
-                    print(self.DL_TRAINER.SCALERS_LIST)
                     pred = self.DL_TRAINER.predict(self.DL_TRAINER.SCALERS_LIST[model_id],
-                                                   self.MODELS_LIST[model_id], 
-                                                   X, 
-                                                   settings.BATCH_SIZE, 
+                                                   self.MODELS_LIST[model_id],
+                                                   X,
+                                                   settings.BATCH_SIZE,
                                                    device)
                     score_value = score(y, pred)
                 result[scoring][model_id] = score_value
@@ -181,7 +179,8 @@ class Services:
             if model_id != settings.BASELINE_MODEL_ID:
                 if self.MODELS_TYPES_LIST[model_id] == 'NeuralNetwork':
                     os.remove(f"{settings.MODEL_DIR}/{model_id}.pt")
-                    os.remove(f"{settings.MODEL_DIR}/scalers/{model_id}_scaler.pkl")
+                    os.remove(
+                        f"{settings.MODEL_DIR}/scalers/{model_id}_scaler.pkl")
                 else:
                     os.remove(f"{settings.MODEL_DIR}/{model_id}.pkl")
                 os.remove(f"{settings.MODEL_DIR}/{model_id}")

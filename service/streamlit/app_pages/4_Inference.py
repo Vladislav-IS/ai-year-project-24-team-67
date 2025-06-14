@@ -5,6 +5,7 @@ import re
 import client_funcs
 import pandas as pd
 import plotly.express as px
+
 import streamlit as st
 
 
@@ -30,6 +31,15 @@ def back_clicked():
     st.session_state.list_task = 0
     st.session_state.choosing_count = 0
     st.cache_data.clear()
+
+
+def list_back_clicked():
+    '''
+    возврвщение на страницу списка моделей
+    '''
+    st.session_state.models_task = 2
+    st.session_state.list_task = 0
+    st.session_state.choosing_count = 0
 
 
 @st.cache_data
@@ -271,7 +281,7 @@ def form_list(models, cur_model, baseline_model):
         st.session_state.model_ids.append(model['id'])
         st_cols = st.columns(2)
         st_cols[0].write('Тип:')
-        st_cols[1].write(f'{model['type']}')
+        st_cols[1].write(f'{st.session_state.wld[model['type']]}')
         for param, value in model['hyperparameters'].items():
             st_cols[0].write(param)
             st_cols[1].write(value)
@@ -336,7 +346,7 @@ def compare_models_page(placeholder, df_cols_data):
     '''
     placeholder.empty()
     st_cols = st.columns(3)
-    st_cols[1].button("Назад", on_click=back_clicked, use_container_width=True)
+    st_cols[1].button("Назад", on_click=list_back_clicked, use_container_width=True)
     st.info('Здесь вы можете измерить качество одной или нескольких моделей.')
     predict_csv = st.file_uploader(
         'Загрузите датасет для сравнения моделей', type=['csv'])
@@ -429,6 +439,16 @@ if 'list_task' not in st.session_state:
 # переменная состояния страницы сравнения качества моделей
 if 'choose_task' not in st.session_state:
     st.session_state.choose_task = 0
+
+# словарь переводов
+if 'wld' not in st.session_state:
+    st.session_state.wld = {
+        'NeuralNetwork': 'Нейронная сеть',
+        'LogReg': 'Логистическая регрессия',
+        'SVM': 'Машина опорных векторов',
+        'RandomForest': 'Случайный лес',
+        'GradientBoosting': 'Градиентный бустинг'
+    }
 
 placeholder = st.empty()
 

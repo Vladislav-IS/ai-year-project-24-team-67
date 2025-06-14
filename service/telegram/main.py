@@ -1,12 +1,12 @@
-import logging
 import asyncio
+import logging
+from logging.handlers import RotatingFileHandler
 from os import mkdir
 from os.path import exists
-from logging.handlers import RotatingFileHandler
-from aiogram import Dispatcher
-from settings import settings
-from handlers import router, bot
 
+from aiogram import Dispatcher
+from handlers import bot, router
+from settings import settings
 
 # создание папки для хранения логов
 if not exists("logs"):

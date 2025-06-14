@@ -1,17 +1,19 @@
+import ast
 import asyncio
 import concurrent.futures as pool
 import json
 import os
-from typing import Annotated, Dict, List, Literal, Optional, Any
-import ast
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, File, Form, HTTPException, Path, UploadFile, BackgroundTasks
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from services import Services
 from settings import Settings
+
+from fastapi import (APIRouter, BackgroundTasks, File, Form, HTTPException,
+                     Path, UploadFile)
+from fastapi.responses import FileResponse
 
 router = APIRouter()
 
@@ -74,7 +76,7 @@ class ClassicMlInfoResponse(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-            "models": {"Some type": {"Some param": "Some param type"}}
+                "models": {"Some type": {"Some param": "Some param type"}}
             }
         }
 
@@ -99,14 +101,14 @@ class DlIdResponse(IdResponse):
     class Config:
         json_schema_extra = {
             "example": {
-                "id": "Some id", 
+                "id": "Some id",
                 "status": "load",
                 "train_loss": [0.1],
                 "train_metric": [0.1],
                 "val_loss": [0.1],
                 "val_metric": [0.1]
-                }
             }
+        }
 
 
 # ответ в случае ошибки
@@ -191,7 +193,7 @@ class DlInfoResponse(BaseModel):
 
     class Config:
         json_schema_extra = {
-            "example" : {
+            "example": {
                 "devices": ["CPU", "CUDA"],
                 "losses": ["Some loss"],
                 "metrics": ["Some metric"],
@@ -234,7 +236,7 @@ async def get_classic_ml_info():
     можно обучить
     '''
     model_types = {}
-    for mtype in settings.MODEL_TYPES:
+    for mtype in settings.CLASSIC_MODEL_TYPES:
         model_types[mtype] = services.get_params(mtype)
     return ClassicMlInfoResponse(models=model_types)
 
@@ -281,13 +283,16 @@ async def train_classic_ml(
     df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
     df_nan = df.replace(-999, np.nan)
     df_notna = df_nan.dropna(subset=settings.NOT_NA_COLS)
-    X = df_notna.drop(settings.NON_FEATURE_COLS + [settings.TARGET_COL], axis=1)
-    y = df_notna[settings.TARGET_COL].apply(lambda x: 1 if x == settings.SIGNAL else 0)
+    X = df_notna.drop(settings.NON_FEATURE_COLS
+                      + [settings.TARGET_COL], axis=1)
+    y = df_notna[settings.TARGET_COL].apply(
+        lambda x: 1 if x == settings.SIGNAL else 0)
     executor = pool.ProcessPoolExecutor(max_workers=train_proc_num)
     services.ACTIVE_PROCESSES += train_proc_num
     loop = asyncio.get_running_loop()
     tasks = [
-        loop.run_in_executor(executor, services.CLASSIC_ML_TRAINER.train, dict(model), X, y, settings.MODEL_DIR)
+        loop.run_in_executor(executor, services.CLASSIC_ML_TRAINER.train, dict(
+            model), X, y, settings.MODEL_DIR)
         for model in models
     ]
     results = await asyncio.gather(*tasks)
@@ -326,7 +331,7 @@ async def train_dl(
         id=model_dict["id"],
         type=model_dict["type"],
         hyperparameters=model_dict["hyperparameters"]
-        )
+    )
     if services.find_id(model.id):
         raise HTTPException(
             status_code=500, detail=f"Model {model.id} is already fitted"
@@ -342,8 +347,10 @@ async def train_dl(
     df = pd.read_csv(file.file, index_col=settings.INDEX_COL)
     df_nan = df.replace(-999, np.nan)
     df_notna = df_nan.dropna(subset=settings.NOT_NA_COLS)
-    X = df_notna.drop(settings.NON_FEATURE_COLS + [settings.TARGET_COL], axis=1)
-    y = df_notna[settings.TARGET_COL].apply(lambda x: 1 if x == settings.SIGNAL else 0)
+    X = df_notna.drop(settings.NON_FEATURE_COLS
+                      + [settings.TARGET_COL], axis=1)
+    y = df_notna[settings.TARGET_COL].apply(
+        lambda x: 1 if x == settings.SIGNAL else 0)
     backgroundTasks.add_task(services.dl_fit, X, y, dict(model))
     return IdResponse(id=model.id, status='training started')
 
@@ -468,8 +475,9 @@ async def models_list():
         raise HTTPException(status_code=500, detail="Models list not found")
     models = []
     for model_id, model_type in services.MODELS_TYPES_LIST.items():
-        if model_type in settings.MODEL_TYPES:
-            hyperparams = services.MODELS_LIST[model_id]['classifier'].get_params()
+        if model_type in settings.CLASSIC_MODEL_TYPES:
+            hyperparams = services.MODELS_LIST[model_id]['classifier'].get_params(
+            )
             hyperparams = {param: value for param, value in hyperparams.items()
                            if param in services.get_params(model_type)}
         else:
@@ -530,11 +538,12 @@ async def dl_info():
     if services.DL_TRAINER.CUDA_IS_AVAILABLE:
         devices.append('CUDA')
     for optimizer_type in settings.AVAILABLE_OPTIMIZERS:
-        optimizers[optimizer_type] = services.DL_TRAINER.get_optimizers_params(optimizer_type)
+        optimizers[optimizer_type] = services.DL_TRAINER.get_optimizers_params(
+            optimizer_type)
     for layer_type in settings.AVAILABLE_LAYERS:
         layers[layer_type] = services.DL_TRAINER.get_layers_params(layer_type)
-    return DlInfoResponse(devices=devices, 
-                          optimizers=optimizers, 
+    return DlInfoResponse(devices=devices,
+                          optimizers=optimizers,
                           layers=layers,
                           losses=settings.AVAILABLE_LOSSES,
                           metrics=settings.AVAILABLE_SCORINGS,

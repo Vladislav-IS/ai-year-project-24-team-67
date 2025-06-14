@@ -4,8 +4,9 @@ from os import mkdir
 from os.path import exists
 
 import client_funcs
-import streamlit as st
 from settings import Settings
+
+import streamlit as st
 
 settings = Settings()
 

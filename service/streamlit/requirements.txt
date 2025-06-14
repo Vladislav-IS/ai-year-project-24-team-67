@@ -8,4 +8,3 @@ requests_toolbelt==1.0.0
 seaborn==0.13.2
 st_pages==1.0.1
 streamlit==1.37.1
-streamlit==1.45.1

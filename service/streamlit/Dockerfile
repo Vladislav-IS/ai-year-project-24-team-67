@@ -10,4 +10,4 @@ RUN pip install -r requirements.txt --no-cache-dir
 
 EXPOSE 8501
 
-CMD ["streamlit", "run", "run_streamlit.py"]
+CMD ["streamlit", "run", "run_streamlit.py", "--server.address=0.0.0.0", "--server.port=8501"]

@@ -7,6 +7,7 @@ import client_funcs
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
 import streamlit as st
 
 
@@ -49,6 +50,16 @@ def back_dl_train_clicked():
     возвращение на страницу обучения
     '''
     st.session_state.dl_task = 0
+
+
+def create_exit_button():
+    '''
+    добавление кнопки перезапуска обучения
+    '''
+    cols = st.columns(3)
+    cols[1].button('Начать заново', 
+                   use_container_width=True,
+                   on_click=back_dl_train_clicked if st.session_state.train_task == 1 else back_sklearn_train_clicked)
 
 
 @st.cache_data
@@ -97,20 +108,27 @@ def create_dl_model(index, layer_types):
         col_idx += 1
 
 
+def get_mtype(rus_mtype):
+    for k, v in st.session_state.wld.items():
+        if v == rus_mtype:
+            return k
+    return ''
+
+
 def create_sklearn_model(index, model_types):
     '''
     создание виджетов для добавления новой модели
     '''
     st.divider()
     st.write(f'Модель {index + 1}')
-    mtype = st.selectbox('Выберите тип модели:',
-                         model_types.keys(),
-                         key=f'select_{index}')
+    rus_mtype = st.selectbox('Выберите тип модели:',
+                             [st.session_state.wld.get(mtype, mtype) for mtype in model_types.keys()],
+                             key=f'select_{index}')
     model_id = st.text_input('Введите ID модели',
                              key=f'input_{index}')
-    st.session_state[f'mtype_{index}'] = mtype
+    st.session_state[f'mtype_{index}'] = get_mtype(rus_mtype)
     st.session_state[f'model_id_{index}'] = model_id
-    params = model_types[mtype]
+    params = model_types[get_mtype(rus_mtype)]
     st.session_state[f'params_{index}'] = {}
     st.info('Введите параметры (или оставьте поля пустыми - тогда будут \
             подставлены параметры по умолчанию).')
@@ -198,10 +216,10 @@ def start_page(placeholder):
 
 
 def update_train_plots(train_status):
-    fig = make_subplots(rows=1, 
-                        cols=2, 
+    fig = make_subplots(rows=1,
+                        cols=2,
                         specs=[[{"type": "xy"}, {"type": "xy"}]],
-                        subplot_titles = ("Функция потерь", "Метрика"))
+                        subplot_titles=("Функция потерь", "Метрика"))
     epochs = [i + 1 for i in range(len(train_status['train_loss']))]
     loss = st.session_state.loss_params
     metric = st.session_state.metric
@@ -213,10 +231,10 @@ def update_train_plots(train_status):
                   line=dict(color='red')), row=1, col=2)
     fig.add_trace(go.Scatter(y=train_status['val_metric'], x=epochs, name=f'{metric} (вал.)',
                   line=dict(color='blue')), row=1, col=2)
-    
+
     fig['layout']['xaxis']['title'] = 'Эпоха'
-    fig['layout']['xaxis2']['title']= 'Эпоха'
-    
+    fig['layout']['xaxis2']['title'] = 'Эпоха'
+
     return fig
 
 
@@ -229,7 +247,7 @@ def train_dl_res_page():
     # st_cols[1].button("Назад", on_click=back_clicked,
     #                  use_container_width=True)
     request = {'id': st.session_state.model_id, 'type': 'NeuralNetwork'}
-    hyperparams = {'time_limit' : st.session_state['time_limit']}
+    hyperparams = {'time_limit': st.session_state['time_limit']}
     hyperparams['device'] = st.session_state['device']
     hyperparams['metric'] = st.session_state['metric']
     hyperparams['epochs_num'] = st.session_state[f'epochs_num']
@@ -240,7 +258,8 @@ def train_dl_res_page():
     if st.session_state.architecture == 'Baseline':
         hyperparams['model_params'] = st.session_state.architecture
     else:
-        hyperparams['model_params'] = {'layers_count': st.session_state.dl_creating_count}
+        hyperparams['model_params'] = {
+            'layers_count': st.session_state.dl_creating_count}
         for index in range(st.session_state.dl_creating_count):
             hyperparams['model_params'][f'layer_{index}'] = st.session_state[f'layer_{index}']
     request['hyperparameters'] = hyperparams
@@ -249,20 +268,19 @@ def train_dl_res_page():
         train_status = response.json()
 
         placeholder = st.empty()
-        if True:
-            while train_status['status'] == 'training started':
-                current_time = time.time()
-                if current_time - st.session_state.last_update > st.session_state.time_interval:
-                    response = client_funcs.get_dl_status()
-                    if response.status_code != 200:
-                        st.error(f'Ошибка, сообщение от сервера: {response.content}')
-                    else:
-                        if train_status != response.json():
-                            train_status = response.json()
-                            placeholder.plotly_chart(update_train_plots(train_status),
-                                                     use_container_width=True,
-                                                     theme="streamlit")
-                    st.session_state.last_update = current_time
+        while train_status['status'] == 'training started':
+            current_time = time.time()
+            if current_time - st.session_state.last_update > st.session_state.time_interval:
+                response = client_funcs.get_dl_status()
+                if response.status_code != 200:
+                    st.error(f'Ошибка, сообщение от сервера: {response.content}')
+                else:
+                    if train_status != response.json():
+                        train_status = response.json()
+                        placeholder.plotly_chart(update_train_plots(train_status),
+                                                 use_container_width=True,
+                                                 theme="streamlit")
+                st.session_state.last_update = current_time
         if train_status['status'] == 'trained':
             st.info(f'Модель {train_status['id']} обучена')
         elif train_status['status'] == 'not trained':
@@ -272,11 +290,12 @@ def train_dl_res_page():
         else:
             st.error(f'Указаны неверные параметры \
                      для модели {train_status['id']}')
+        create_exit_button()
     else:
         st.error(f'Ошибка, сообщение от сервера: {response.content}')
-    st.session_state.dl_task = 0
+        create_exit_button()
 
-    
+
 def train_sklearn_res_page():
     requests = []
     if st.session_state.train_task == 2:
@@ -284,11 +303,13 @@ def train_sklearn_res_page():
             request = {}
             request['type'] = st.session_state[f'mtype_{index}']
             request['id'] = st.session_state[f'model_id_{index}']
-            request['hyperparameters'] = {'time_limit' : st.session_state['time_limit']}
+            request['hyperparameters'] = {
+                'time_limit': st.session_state['time_limit']}
             for param, value in st.session_state[f'params_{index}'].items():
                 request['hyperparameters'][param] = value
             requests.append(request)
-        responses = client_funcs.train_sklearn_models(requests, st.session_state.train_csv)
+        responses = client_funcs.train_sklearn_models(
+            requests, st.session_state.train_csv)
     if responses.status_code == 200:
         for response in responses.json():
             model_status = response['status']
@@ -303,9 +324,10 @@ def train_sklearn_res_page():
                 st.error(
                     f'Указаны неверные параметры \
                         для модели {model_id}')
+            create_exit_button()
     else:
         st.error(f'Ошибка, сообщение от сервера: {responses.content}')
-    st.session_state.sklearn_task = 0
+        create_exit_button()
 
 
 def dl_train_page(placeholder, dl_info, df_cols_data):
@@ -373,16 +395,17 @@ def dl_train_page(placeholder, dl_info, df_cols_data):
                                              key='epochs_num_wgt')
                 st.session_state['epochs_num'] = epochs_num
                 time_limit = st.number_input('Введите максимальное время обучения на одной эпохе:',
-                                              min_value=1,
-                                              max_value=1000,
-                                              value=60,
-                                              step=1,
-                                              key='time_limit_wgt')
+                                             min_value=1,
+                                             max_value=1000,
+                                             value=60,
+                                             step=1,
+                                             key='time_limit_wgt')
                 st.session_state['time_limit'] = time_limit
                 optimizer_type = st.selectbox('Выберите оптимизатор:',
                                               dl_info['optimizers'].keys(),
                                               key='optimizer_params_wgt')
-                st.session_state['optimizer_params'] = {'optimizer_type': optimizer_type}
+                st.session_state['optimizer_params'] = {
+                    'optimizer_type': optimizer_type}
                 st.divider()
                 st.write(f'Параметры оптимизатора')
                 for param, param_type in dl_info['optimizers'][optimizer_type].items():
@@ -414,6 +437,7 @@ def dl_train_page(placeholder, dl_info, df_cols_data):
                     st_cols = st.columns(3)
                     st_cols[1].button('Начать обучение',
                                       on_click=start_train_clicked,
+                                      disabled=st.session_state.dl_task==1,
                                       use_container_width=True)
                 else:
                     st.divider()
@@ -432,7 +456,7 @@ def dl_train_page(placeholder, dl_info, df_cols_data):
                                       use_container_width=True)
                     st_cols[2].button('Начать обучение',
                                       on_click=start_train_clicked,
-                                      disabled=disabled,
+                                      disabled=disabled or st.session_state.dl_task==1,
                                       use_container_width=True)
         if st.session_state.dl_task == 1:
             # placeholder.empty()
@@ -460,11 +484,11 @@ def sklearn_train_page(placeholder, model_types, df_cols_data):
             else:
                 st.session_state.train_csv = train_csv
                 time_limit = st.number_input('Введите максимальное время обучения одной модели (в секундах):',
-                                              min_value=1,
-                                              max_value=1000,
-                                              value=60,
-                                              step=1,
-                                              key='time_limit_wgt')
+                                             min_value=1,
+                                             max_value=1000,
+                                             value=60,
+                                             step=1,
+                                             key='time_limit_wgt')
                 st.session_state['time_limit'] = time_limit
                 with st.container():
                     for i in range(st.session_state.sklearn_creating_count):
@@ -480,7 +504,7 @@ def sklearn_train_page(placeholder, model_types, df_cols_data):
                                   use_container_width=True)
                 st_cols[2].button('Начать обучение',
                                   on_click=start_train_clicked,
-                                  disabled=disabled,
+                                  disabled=disabled or st.session_state.sklearn_task==1,
                                   use_container_width=True)
         if st.session_state.sklearn_task == 1:
             # placeholder.empty()
@@ -545,6 +569,17 @@ if 'last_update' not in st.session_state:
 # интервал запросов статуса обучения (в секундах)
 if 'time_interval' not in st.session_state:
     st.session_state.time_interval = 1
+
+# словарь переводов
+# словарь переводов
+if 'wld' not in st.session_state:
+    st.session_state.wld = {
+        'NeuralNetwork': 'Нейронная сеть',
+        'LogReg': 'Логистическая регрессия',
+        'SVM': 'Машина опорных векторов',
+        'RandomForest': 'Случайный лес',
+        'GradientBoosting': 'Градиентный бустинг'
+    }
 
 placeholder = st.empty()
 

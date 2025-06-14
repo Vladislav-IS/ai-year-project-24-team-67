@@ -8,9 +8,10 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import seaborn as sns
-import streamlit as st
 from plotly.subplots import make_subplots
 from settings import Settings
+
+import streamlit as st
 
 settings = Settings()
 

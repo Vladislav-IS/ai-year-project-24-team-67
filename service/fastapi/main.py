@@ -1,7 +1,8 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from router import MessageResponse, router
 from settings import Settings
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 settings = Settings()
 

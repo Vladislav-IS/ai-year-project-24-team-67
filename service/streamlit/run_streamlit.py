@@ -1,10 +1,12 @@
-import streamlit as st
-from st_pages import add_page_title, get_nav_from_toml
-from settings import Settings
+import logging
 from logging.handlers import RotatingFileHandler
 from os import mkdir
 from os.path import exists
-import logging
+
+from settings import Settings
+from st_pages import add_page_title, get_nav_from_toml
+
+import streamlit as st
 
 
 def main():
