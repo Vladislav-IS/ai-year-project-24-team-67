@@ -1,4 +1,5 @@
-version: '3'
+version: '2.5'
+
 
 services:
   fastapi:
@@ -12,12 +13,23 @@ services:
   streamlit:
     build: streamlit/
     depends_on:
-      - fastapi
+      fastapi:
+        condition: service_started
     ports:
       - 8501:8501
     networks:
       - deploy_network
     container_name: streamlit
+
+  telegram:
+    build: telegram/
+    depends_on:
+      fastapi:
+        condition: service_started
+    networks:
+      - deploy_network
+    container_name: telegram
+    
 
 networks:
   deploy_network:

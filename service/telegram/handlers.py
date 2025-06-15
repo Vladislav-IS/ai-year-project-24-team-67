@@ -725,7 +725,7 @@ async def predict_file_handler(message: Message, state: FSMContext):
                 await message.answer_document(buf_file, caption="Результаты представлены в файле")
             else:
                 await message.answer('Повторите свой запрос позже!')
-                state.clear()
+                await state.clear()
     except Exception as e:
         logging.error(f"Inference failed: {e}")
         await message.answer("Ошибка предсказания. Попробуйте позже!")
